@@ -1,0 +1,157 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Program {
+  YC
+  SPEEDRUN
+}
+
+enum SignalType {
+  EARLY_YC
+  OFFICIAL_YC
+  SPEEDRUN
+}
+
+enum SourceName {
+  YC_DIRECTORY
+  YC_SPEEDRUN
+  X
+  LINKEDIN
+  DEMO
+}
+
+enum AlertType {
+  EARLY_YC_SIGNAL
+  YC_CONFIRMED
+  NEW_YC_COMPANY
+  NEW_SPEEDRUN_COMPANY
+}
+
+enum MonitorRunStatus {
+  SUCCESS
+  PARTIAL_FAILURE
+  FAILURE
+}
+
+model Company {
+  id                   String     @id @default(cuid())
+  name                 String
+  slug                 String?
+  domain               String?
+  ycUrl                String?    @map("yc_url")
+  batch                String?
+  program              Program    @default(YC)
+  description          String?
+  firstSeenAt          DateTime   @default(now()) @map("first_seen_at")
+  officialConfirmedAt  DateTime?  @map("official_confirmed_at")
+  createdAt            DateTime   @default(now()) @map("created_at")
+  updatedAt            DateTime   @updatedAt @map("updated_at")
+  founders             Founder[]
+  signals              Signal[]
+
+  @@unique([program, slug])
+  @@unique([program, domain])
+  @@map("companies")
+}
+
+model Founder {
+  id          String    @id @default(cuid())
+  name        String
+  handle      String?
+  platform    SourceName
+  companyId   String?   @map("company_id")
+  profileUrl  String?   @map("profile_url")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  company     Company?  @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  signals     Signal[]
+
+  @@unique([platform, handle])
+  @@map("founders")
+}
+
+model Signal {
+  id             String      @id @default(cuid())
+  companyId      String?     @map("company_id")
+  founderId      String?     @map("founder_id")
+  platform       SourceName
+  externalId     String      @map("external_id")
+  url            String
+  text           String
+  detectedAt     DateTime    @map("detected_at")
+  signalType     SignalType  @map("signal_type")
+  confidence     Float
+  batch          String?
+  program        Program?
+  evidence       Json?
+  metadata       Json?
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+  company        Company?    @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  founder        Founder?    @relation(fields: [founderId], references: [id], onDelete: SetNull)
+  alerts         Alert[]
+
+  @@unique([platform, externalId])
+  @@map("signals")
+}
+
+model SourceSnapshot {
+  id              String      @id @default(cuid())
+  source          SourceName  @unique
+  cursor          String?
+  lastSeenAt      DateTime?   @map("last_seen_at")
+  lastSuccessAt   DateTime?   @map("last_success_at")
+  lastErrorAt     DateTime?   @map("last_error_at")
+  lastErrorReason String?     @map("last_error_reason")
+  metadata        Json?
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  @@map("source_snapshots")
+}
+
+model Alert {
+  id             String     @id @default(cuid())
+  signalId       String     @map("signal_id")
+  alertType      AlertType  @map("alert_type")
+  slackMessageId String?    @map("slack_message_id")
+  sentAt         DateTime   @default(now()) @map("sent_at")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  signal         Signal     @relation(fields: [signalId], references: [id], onDelete: Cascade)
+
+  @@unique([signalId, alertType])
+  @@map("alerts")
+}
+
+model MonitorRun {
+  id             String           @id @default(cuid())
+  startedAt      DateTime         @default(now()) @map("started_at")
+  completedAt    DateTime?        @map("completed_at")
+  status         MonitorRunStatus
+  triggeredBy    String           @map("triggered_by")
+  sources        String[]
+  newSignals     Int              @default(0) @map("new_signals")
+  alertsSent     Int              @default(0) @map("alerts_sent")
+  errors         Json?
+  summary        Json?
+
+  @@map("monitor_runs")
+}
+
+model PondRun {
+  id            String     @id @default(cuid())
+  runId         String     @unique @map("run_id")
+  taskId        String     @unique @map("task_id")
+  requestBody   Json       @map("request_body")
+  status        String
+  responseBody  Json?      @map("response_body")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+
+  @@map("pond_runs")
+}
