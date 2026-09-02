@@ -212,11 +212,13 @@ export function createApp() {
   });
 
   app.get("/", async (_request, response) => {
-    const [latestRun, counts, sourceHealth, signals] = await Promise.all([
+    const [latestRun, counts, officialCounts, sourceHealth, signals, companies] = await Promise.all([
       repository.latestMonitorRun(),
       repository.getDashboardCounts(),
+      repository.getOfficialCompanyCounts(),
       repository.listSourceHealth(),
       repository.listRecentSignals(6),
+      repository.listRecentOfficialCompanies(8),
     ]);
 
     response.type("html").send(
@@ -224,16 +226,21 @@ export function createApp() {
         latestRunLabel: formatRelativeTime(latestRun?.completedAt),
         nextRunLabel: `in ${env.POLL_INTERVAL_HOURS} hours`,
         counts,
+        officialCounts,
         sourceHealth,
         signals,
+        companies,
         schedulerRunning: scheduler.isRunning(),
       }),
     );
   });
 
   app.get("/signals", async (_request, response) => {
-    const signals = await repository.listRecentSignals(50);
-    response.type("html").send(renderSignalsPage(signals));
+    const [signals, companies] = await Promise.all([
+      repository.listRecentSignals(50),
+      repository.listRecentOfficialCompanies(50),
+    ]);
+    response.type("html").send(renderSignalsPage(signals, companies));
   });
 
   app.get("/settings", async (_request, response) => {

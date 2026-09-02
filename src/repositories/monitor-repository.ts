@@ -265,6 +265,37 @@ export class MonitorRepository {
     };
   }
 
+  async getOfficialCompanyCounts() {
+    const grouped = await prisma.company.groupBy({
+      by: ["program"],
+      where: {
+        officialConfirmedAt: {
+          not: null,
+        },
+      },
+      _count: {
+        _all: true,
+      },
+    });
+
+    return {
+      ycCount: grouped.find((row) => row.program === "YC")?._count._all ?? 0,
+      speedrunCount: grouped.find((row) => row.program === "SPEEDRUN")?._count._all ?? 0,
+    };
+  }
+
+  async listRecentOfficialCompanies(limit = 12) {
+    return prisma.company.findMany({
+      where: {
+        officialConfirmedAt: {
+          not: null,
+        },
+      },
+      orderBy: [{ officialConfirmedAt: "desc" }, { createdAt: "desc" }],
+      take: limit,
+    });
+  }
+
   async listRecentSignals(limit = 20) {
     return prisma.signal.findMany({
       include: {

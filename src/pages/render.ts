@@ -1,4 +1,4 @@
-import type { Signal } from "@prisma/client";
+import type { Company, Signal } from "@prisma/client";
 
 import type { SourceHealthSummary } from "../monitor/types.js";
 
@@ -506,17 +506,20 @@ export function renderDashboard(params: {
   latestRunLabel: string;
   nextRunLabel: string;
   counts: { companyCount: number; signalCount: number; earlySignalCount: number; alertCount: number };
+  officialCounts: { ycCount: number; speedrunCount: number };
   signals: Array<
     Signal & {
       company: { name: string; batch: string | null; domain: string | null; ycUrl: string | null } | null;
       founder: { name: string } | null;
     }
   >;
+  companies: Company[];
   sourceHealth: SourceHealthSummary[];
   schedulerRunning: boolean;
 }): string {
-  const latest = params.signals[0];
-  const rest = params.signals.slice(1, 5);
+  const featuredCompany = params.companies[0];
+  const recentCompanies = params.companies.slice(1, 7);
+  const latestSignal = params.signals[0];
 
   const sources = params.sourceHealth
     .map(
@@ -529,37 +532,37 @@ export function renderDashboard(params: {
     )
     .join("");
 
-  const feature = latest
+  const feature = featuredCompany
     ? `
       <div class="feature">
-        <div><span class="badge">${escapeHtml(signalLabel(latest.signalType))}</span></div>
+        <div><span class="badge">${escapeHtml(featuredCompany.program === "SPEEDRUN" ? "Speedrun" : "YC Directory")}</span></div>
         <div>
-          <h3>${escapeHtml(latest.company?.name ?? "Unknown company")}</h3>
+          <h3>${escapeHtml(featuredCompany.name)}</h3>
           <div class="meta">
-            <span>${escapeHtml(latest.founder?.name ?? "Unknown founder")}</span>
-            <span>${escapeHtml(latest.company?.batch ?? latest.batch ?? "Batch TBD")}</span>
-            <span>${escapeHtml(latest.platform)}</span>
+            <span>${escapeHtml(featuredCompany.program)}</span>
+            <span>${escapeHtml(featuredCompany.batch ?? "Batch TBD")}</span>
+            <span>${featuredCompany.officialConfirmedAt ? escapeHtml(featuredCompany.officialConfirmedAt.toISOString().slice(0, 10)) : "Recently observed"}</span>
           </div>
-          <div class="text">${escapeHtml(latest.text)}</div>
+          <div class="text">${escapeHtml(featuredCompany.description ?? featuredCompany.domain ?? "Live company pulled from the public YC directory.")}</div>
           <div style="margin-top:12px;">
-            <a href="${escapeHtml(latest.url)}">Open source</a>
-            ${latest.company?.ycUrl ? ` · <a href="${escapeHtml(latest.company.ycUrl)}">YC page</a>` : ""}
+            ${featuredCompany.ycUrl ? `<a href="${escapeHtml(featuredCompany.ycUrl)}">Open company</a>` : ""}
+            ${featuredCompany.domain ? ` · <a href="https://${escapeHtml(featuredCompany.domain)}">Website</a>` : ""}
           </div>
         </div>
-        <div class="conf">${Math.round(latest.confidence * 100)}%<small>confidence</small></div>
+        <div class="conf">${params.companies.length}<small>official found</small></div>
       </div>`
-    : `<div class="empty">No signals yet. Run a scan or POST to <code>/social-inbox</code>.</div>`;
+    : `<div class="empty">No official companies loaded yet. Run a scan with <code>YC_DIRECTORY</code> and <code>YC_SPEEDRUN</code>.</div>`;
 
-  const rows = rest
+  const rows = recentCompanies
     .map(
-      (signal) => `
+      (company) => `
         <div class="row">
-          <div class="type">${escapeHtml(signalLabel(signal.signalType))}</div>
+          <div class="type">${escapeHtml(company.program === "SPEEDRUN" ? "Speedrun" : "YC")}</div>
           <div>
-            <h4>${escapeHtml(signal.company?.name ?? "Unknown")}</h4>
-            <div class="sub">${escapeHtml(signal.founder?.name ?? "Unknown")} · ${escapeHtml(signal.text.slice(0, 120))}${signal.text.length > 120 ? "…" : ""}</div>
+            <h4>${escapeHtml(company.name)}</h4>
+            <div class="sub">${escapeHtml(company.batch ?? "Batch TBD")} · ${escapeHtml(company.description ?? company.domain ?? "Public directory company")}</div>
           </div>
-          <div class="side">${Math.round(signal.confidence * 100)}% · <a href="${escapeHtml(signal.url)}">link</a></div>
+          <div class="side">${company.ycUrl ? `<a href="${escapeHtml(company.ycUrl)}">open</a>` : ""}</div>
         </div>`,
     )
     .join("");
@@ -570,8 +573,8 @@ export function renderDashboard(params: {
     `
       <section class="intro">
         <div>
-          <h1>Catch YC news before the directory does.</h1>
-          <p>Watch official listings and founder announcements, classify early signals, and push Slack alerts when something new lands.</p>
+          <h1>Track real YC launches from free public sources.</h1>
+          <p>Pull actual companies from the YC directory and Speedrun pages, then layer founder-signal detection and Slack alerts on top.</p>
           <div class="actions">
             <form method="post" action="/run-now" onsubmit="event.preventDefault(); fetch('/run-now',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json()).then(()=>location.reload());">
               <button class="btn btn-main" type="submit">Run scan now</button>
@@ -587,24 +590,24 @@ export function renderDashboard(params: {
       </section>
 
       <section class="metrics">
-        <div class="metric"><div class="k">Companies</div><div class="v">${params.counts.companyCount}</div></div>
-        <div class="metric"><div class="k">Signals</div><div class="v">${params.counts.signalCount}</div></div>
-        <div class="metric"><div class="k">Early</div><div class="v">${params.counts.earlySignalCount}</div></div>
+        <div class="metric"><div class="k">YC directory</div><div class="v">${params.officialCounts.ycCount}</div></div>
+        <div class="metric"><div class="k">Speedrun</div><div class="v">${params.officialCounts.speedrunCount}</div></div>
+        <div class="metric"><div class="k">Founder signals</div><div class="v">${params.counts.signalCount}</div></div>
         <div class="metric"><div class="k">Alerts</div><div class="v">${params.counts.alertCount}</div></div>
       </section>
 
       <section class="block">
         <div class="block-head">
           <h2>Sources</h2>
-          <p>Inbox works without X credits</p>
+          <p>Homepage is now driven by live free-source data</p>
         </div>
         <div class="sources">${sources || `<div class="source"><span class="dot warn"></span>No sources yet</div>`}</div>
       </section>
 
       <section class="block">
         <div class="block-head">
-          <h2>Latest hit</h2>
-          <p>Most recent classified signal</p>
+          <h2>Latest official company</h2>
+          <p>Real data from YC / Speedrun, not seeded demo posts</p>
         </div>
         ${feature}
       </section>
@@ -612,8 +615,20 @@ export function renderDashboard(params: {
       ${
         rows
           ? `<section class="block">
-              <div class="block-head"><h2>Recent</h2><p>Earlier in the feed</p></div>
+              <div class="block-head"><h2>Recent companies</h2><p>Latest public listings pulled from free sources</p></div>
               <div class="list">${rows}</div>
+            </section>`
+          : ""
+      }
+
+      ${
+        latestSignal
+          ? `<section class="block">
+              <div class="block-head"><h2>Latest founder signal</h2><p>Separate from the official company feed</p></div>
+              <div class="surface">
+                <strong>${escapeHtml(latestSignal.company?.name ?? "Unknown company")}</strong>
+                <div style="margin-top:8px;color:var(--muted);">${escapeHtml(latestSignal.text)}</div>
+              </div>
             </section>`
           : ""
       }
@@ -628,8 +643,9 @@ export function renderSignalsPage(
       founder: { name: string } | null;
     }
   >,
+  companies: Company[],
 ): string {
-  const rows = signals
+  const founderSignalRows = signals
     .map(
       (signal) => `
         <tr>
@@ -643,27 +659,56 @@ export function renderSignalsPage(
     )
     .join("");
 
+  const companyRows = companies
+    .map(
+      (company) => `
+        <div class="row">
+          <div class="type">${escapeHtml(company.program === "SPEEDRUN" ? "Speedrun" : "YC")}</div>
+          <div>
+            <h4>${escapeHtml(company.name)}</h4>
+            <div class="sub">${escapeHtml(company.batch ?? "Batch TBD")} · ${escapeHtml(company.description ?? company.domain ?? "Public company listing")}</div>
+          </div>
+          <div class="side">${company.ycUrl ? `<a href="${escapeHtml(company.ycUrl)}">open</a>` : ""}</div>
+        </div>`,
+    )
+    .join("");
+
   return pageShell(
     "Signals · YC Launch Monitor",
     "signals",
     `
       <h1 class="page-title">Signals</h1>
-      <p class="page-lead">Every early announcement and official confirmation classified by the monitor.</p>
-      <div class="surface">
-        <table>
-          <thead>
-            <tr>
-              <th>Detected</th>
-              <th>Type</th>
-              <th>Company</th>
-              <th>Founder</th>
-              <th>Confidence</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>${rows || `<tr><td colspan="6">No signals yet.</td></tr>`}</tbody>
-        </table>
-      </div>
+      <p class="page-lead">Official public-company listings and founder-driven early signals are separated below so demo data does not blend into the real directory feed.</p>
+
+      <section class="block">
+        <div class="block-head">
+          <h2>Official companies</h2>
+          <p>Real YC / Speedrun listings from free public sources</p>
+        </div>
+        <div class="list">${companyRows || `<div class="empty">No official companies loaded yet.</div>`}</div>
+      </section>
+
+      <section class="block">
+        <div class="block-head">
+          <h2>Founder signals</h2>
+          <p>Inbox, demo, or social-source detections</p>
+        </div>
+        <div class="surface">
+          <table>
+            <thead>
+              <tr>
+                <th>Detected</th>
+                <th>Type</th>
+                <th>Company</th>
+                <th>Founder</th>
+                <th>Confidence</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>${founderSignalRows || `<tr><td colspan="6">No founder signals yet.</td></tr>`}</tbody>
+          </table>
+        </div>
+      </section>
     `,
   );
 }

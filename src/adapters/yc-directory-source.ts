@@ -1,7 +1,7 @@
 import type { SourceName } from "@prisma/client";
 
 import { env } from "../config/env.js";
-import { parseCompanyCards } from "./html-company-parser.js";
+import { fetchPublicCompanies } from "./yc-public-index.js";
 import type { MonitorSource, SourcePullResult } from "../monitor/types.js";
 
 export class YcDirectorySource implements MonitorSource {
@@ -11,21 +11,12 @@ export class YcDirectorySource implements MonitorSource {
     const discovered = [];
 
     for (const batch of env.ycDirectoryBatches) {
-      const url = new URL(env.YC_DIRECTORY_URL);
-      url.searchParams.set("batch", batch);
-
-      const response = await fetch(url, {
-        headers: {
-          "user-agent": "yc-launch-monitor/0.1",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`YC directory request failed with status ${response.status}`);
-      }
-
-      const html = await response.text();
-      discovered.push(...parseCompanyCards(html, "YC", env.YC_DIRECTORY_URL, batch));
+      discovered.push(
+        ...(await fetchPublicCompanies({
+          program: "YC",
+          batch,
+        })),
+      );
     }
 
     return {
