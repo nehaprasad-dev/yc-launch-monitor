@@ -5,6 +5,7 @@ import { DemoSource } from "../adapters/demo-source.js";
 import { LinkedInSource } from "../adapters/linkedin-source.js";
 import { SocialInboxSource } from "../adapters/social-inbox-source.js";
 import { XSource } from "../adapters/x-source.js";
+import { fetchPrimaryFounderName } from "../adapters/yc-public-index.js";
 import { YcDirectorySource } from "../adapters/yc-directory-source.js";
 import { YcSpeedrunSource } from "../adapters/yc-speedrun-source.js";
 import { buildConfirmationAlert, buildOfficialCompanyAlert, detectSocialAlert } from "./detection.js";
@@ -59,23 +60,38 @@ export class MonitorEngine {
         if (result.companies?.length) {
           for (const company of result.companies) {
             const existing = await this.repository.findCompanyByInput(company);
-            const persisted = await this.repository.upsertCompany(company, true);
+            const needsOfficialAlert =
+              sourceName === "YC_SPEEDRUN"
+                ? !(await this.repository.hasAlertForCompany(company, "NEW_SPEEDRUN_COMPANY"))
+                : !(await this.repository.hasAlertForCompany(company, "NEW_YC_COMPANY"));
+            const shouldEnrichFounder =
+              (sourceName === "YC_DIRECTORY" || sourceName === "YC_SPEEDRUN") &&
+              (!existing || !existing.officialConfirmedAt || needsOfficialAlert);
+            const founderName = shouldEnrichFounder ? await fetchPrimaryFounderName(company.ycUrl) : null;
+            const enrichedCompany = founderName ? { ...company, founderName } : company;
+            const persisted = await this.repository.upsertCompany(enrichedCompany, true);
 
             if (!existing) {
-              alerts.push(buildOfficialCompanyAlert({ ...company, ycUrl: company.ycUrl ?? persisted.ycUrl }, sourceName, result.observedAt));
+              alerts.push(
+                buildOfficialCompanyAlert(
+                  { ...enrichedCompany, ycUrl: enrichedCompany.ycUrl ?? persisted.ycUrl },
+                  sourceName,
+                  result.observedAt,
+                ),
+              );
               continue;
             }
 
             if (
               !existing.officialConfirmedAt &&
-              company.program === "YC" &&
-              !(await this.repository.hasAlertForCompany(company, "YC_CONFIRMED"))
+              enrichedCompany.program === "YC" &&
+              !(await this.repository.hasAlertForCompany(enrichedCompany, "YC_CONFIRMED"))
             ) {
               alerts.push(
                 buildConfirmationAlert(
                   {
-                    ...company,
-                    ycUrl: company.ycUrl ?? persisted.ycUrl,
+                    ...enrichedCompany,
+                    ycUrl: enrichedCompany.ycUrl ?? persisted.ycUrl,
                   },
                   sourceName,
                   result.observedAt,

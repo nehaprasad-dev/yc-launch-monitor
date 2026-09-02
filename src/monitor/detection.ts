@@ -121,6 +121,12 @@ export function buildOfficialCompanyAlert(company: CompanyRecordInput, source: S
     alertType: company.program === "SPEEDRUN" ? "NEW_SPEEDRUN_COMPANY" : "NEW_YC_COMPANY",
     signalType: company.program === "SPEEDRUN" ? "SPEEDRUN" : "OFFICIAL_YC",
     company,
+    founder: company.founderName
+      ? {
+          name: company.founderName,
+          platform: source,
+        }
+      : undefined,
     platform: source,
     externalId: company.slug ?? company.domain ?? company.name,
     url: company.ycUrl ?? "",
@@ -140,6 +146,12 @@ export function buildConfirmationAlert(company: CompanyRecordInput, source: Sour
     alertType: "YC_CONFIRMED",
     signalType: "OFFICIAL_YC",
     company,
+    founder: company.founderName
+      ? {
+          name: company.founderName,
+          platform: source,
+        }
+      : undefined,
     platform: source,
     externalId: `${company.slug ?? company.domain ?? company.name}:confirmed`,
     url: company.ycUrl ?? "",

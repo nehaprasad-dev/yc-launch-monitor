@@ -687,7 +687,11 @@ export function renderSignalsPage(
   >,
   companies: Company[],
 ): string {
-  const founderSignalRows = signals
+  const founderSignals = signals.filter((signal) =>
+    ["X", "LINKEDIN", "SOCIAL_INBOX", "DEMO"].includes(signal.platform),
+  );
+
+  const founderSignalRows = founderSignals
     .map(
       (signal) => `
         <tr>

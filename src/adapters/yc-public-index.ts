@@ -140,3 +140,40 @@ export async function fetchPublicCompanies(params: {
 
   return companies;
 }
+
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#x27;", "'")
+    .replaceAll("&amp;", "&")
+    .replaceAll("&#x2F;", "/")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">");
+}
+
+export async function fetchPrimaryFounderName(ycUrl?: string | null): Promise<string | null> {
+  if (!ycUrl) {
+    return null;
+  }
+
+  const response = await fetch(ycUrl, {
+    headers: {
+      "user-agent": "yc-launch-monitor/0.1",
+    },
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const html = await response.text();
+  const foundersStart = html.indexOf("&quot;founders&quot;:[");
+
+  if (foundersStart === -1) {
+    return null;
+  }
+
+  const foundersSlice = html.slice(foundersStart, foundersStart + 5000);
+  const nameMatch = foundersSlice.match(/&quot;full_name&quot;:&quot;([^&]+?)&quot;/);
+  return nameMatch ? decodeHtmlEntities(nameMatch[1]).trim() : null;
+}

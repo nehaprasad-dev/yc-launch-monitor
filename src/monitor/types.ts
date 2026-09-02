@@ -8,6 +8,7 @@ export interface CompanyRecordInput {
   batch?: string | null;
   program: Program;
   description?: string | null;
+  founderName?: string | null;
   officialConfirmedAt?: Date;
 }
 
