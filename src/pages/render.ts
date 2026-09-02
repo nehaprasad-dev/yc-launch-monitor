@@ -23,6 +23,7 @@ function healthClass(status: string): string {
 }
 
 function pageShell(title: string, active: "home" | "signals" | "settings", body: string): string {
+  const repoUrl = "https://github.com/nehaprasad-dev/yc-launch-monitor";
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -490,11 +491,14 @@ function pageShell(title: string, active: "home" | "signals" | "settings", body:
     <div class="wrap">
       <header class="site">
         <div class="logo">YC<em>Monitor</em> <span>launch watch</span></div>
-        <nav aria-label="Primary">
-          <a class="${active === "home" ? "active" : ""}" href="/">Monitor</a>
-          <a class="${active === "signals" ? "active" : ""}" href="/signals">Signals</a>
-          <a class="${active === "settings" ? "active" : ""}" href="/settings">Settings</a>
-        </nav>
+        <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+          <nav aria-label="Primary">
+            <a class="${active === "home" ? "active" : ""}" href="/">Monitor</a>
+            <a class="${active === "signals" ? "active" : ""}" href="/signals">Signals</a>
+            <a class="${active === "settings" ? "active" : ""}" href="/settings">Settings</a>
+          </nav>
+          <a href="${repoUrl}" target="_blank" rel="noreferrer" style="font-size:13px; font-weight:600; color:var(--muted); border:1px solid var(--line); border-radius:999px; padding:8px 12px;">GitHub</a>
+        </div>
       </header>
       ${body}
     </div>
