@@ -520,8 +520,12 @@ export function renderDashboard(params: {
   const featuredCompany = params.companies[0];
   const recentCompanies = params.companies.slice(1, 7);
   const latestSignal = params.signals[0];
+  const officialTotal = params.officialCounts.ycCount + params.officialCounts.speedrunCount;
+  const primarySourceHealth = params.sourceHealth.filter((health) => ["YC_DIRECTORY", "YC_SPEEDRUN"].includes(health.source));
+  const signalSourceHealth = params.sourceHealth.filter((health) => !["YC_DIRECTORY", "YC_SPEEDRUN"].includes(health.source));
 
-  const sources = params.sourceHealth
+  const renderSourcePills = (items: SourceHealthSummary[]) =>
+    items
     .map(
       (health) => `
         <div class="source">
@@ -549,9 +553,29 @@ export function renderDashboard(params: {
             ${featuredCompany.domain ? ` · <a href="https://${escapeHtml(featuredCompany.domain)}">Website</a>` : ""}
           </div>
         </div>
-        <div class="conf">${params.companies.length}<small>official found</small></div>
+        <div class="conf">${officialTotal}<small>official found</small></div>
       </div>`
     : `<div class="empty">No official companies loaded yet. Run a scan with <code>YC_DIRECTORY</code> and <code>YC_SPEEDRUN</code>.</div>`;
+
+  const founderFeature = latestSignal
+    ? `
+      <div class="feature">
+        <div><span class="badge">${escapeHtml(signalLabel(latestSignal.signalType))}</span></div>
+        <div>
+          <h3>${escapeHtml(latestSignal.company?.name ?? "Unknown company")}</h3>
+          <div class="meta">
+            <span>${escapeHtml(latestSignal.founder?.name ?? "Unknown founder")}</span>
+            <span>${escapeHtml(latestSignal.company?.batch ?? latestSignal.batch ?? "Batch TBD")}</span>
+            <span>${escapeHtml(latestSignal.platform)}</span>
+          </div>
+          <div class="text">${escapeHtml(latestSignal.text)}</div>
+          <div style="margin-top:12px;">
+            <a href="${escapeHtml(latestSignal.url)}">Open source</a>
+          </div>
+        </div>
+        <div class="conf">${Math.round(latestSignal.confidence * 100)}%<small>confidence</small></div>
+      </div>`
+    : `<div class="empty">No founder-announced early signals yet. Use <code>/social-inbox</code> or enable X later.</div>`;
 
   const rows = recentCompanies
     .map(
@@ -573,8 +597,8 @@ export function renderDashboard(params: {
     `
       <section class="intro">
         <div>
-          <h1>Track real YC launches from free public sources.</h1>
-          <p>Pull actual companies from the YC directory and Speedrun pages, then layer founder-signal detection and Slack alerts on top.</p>
+          <h1>Catch founder YC announcements before the directory updates.</h1>
+          <p>The monitor watches public YC listings, checks founder signals, and separates early acceptance posts from official confirmations so your Slack gets the important update first.</p>
           <div class="actions">
             <form method="post" action="/run-now" onsubmit="event.preventDefault(); fetch('/run-now',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json()).then(()=>location.reload());">
               <button class="btn btn-main" type="submit">Run scan now</button>
@@ -586,49 +610,63 @@ export function renderDashboard(params: {
           <div class="live"><i></i>${params.schedulerRunning ? "Monitoring" : "Idle"}</div>
           <div class="when">Last scan ${escapeHtml(params.latestRunLabel)}</div>
           <div class="when">Next ${escapeHtml(params.nextRunLabel)}</div>
+          ${
+            latestSignal
+              ? `<div class="surface" style="margin-top:16px; max-width:320px; text-align:left;">
+                  <div style="font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:var(--accent);">Latest founder signal</div>
+                  <div style="margin-top:8px;font-weight:700;">${escapeHtml(latestSignal.company?.name ?? "Unknown company")}</div>
+                  <div style="margin-top:6px;color:var(--muted);font-size:13px;line-height:1.45;">${escapeHtml(latestSignal.text.slice(0, 120))}${latestSignal.text.length > 120 ? "…" : ""}</div>
+                </div>`
+              : ""
+          }
         </div>
       </section>
 
       <section class="metrics">
-        <div class="metric"><div class="k">YC directory</div><div class="v">${params.officialCounts.ycCount}</div></div>
-        <div class="metric"><div class="k">Speedrun</div><div class="v">${params.officialCounts.speedrunCount}</div></div>
-        <div class="metric"><div class="k">Founder signals</div><div class="v">${params.counts.signalCount}</div></div>
+        <div class="metric"><div class="k">Official companies</div><div class="v">${officialTotal}</div></div>
+        <div class="metric"><div class="k">Early signals</div><div class="v">${params.counts.earlySignalCount}</div></div>
+        <div class="metric"><div class="k">Speedrun tracked</div><div class="v">${params.officialCounts.speedrunCount}</div></div>
         <div class="metric"><div class="k">Alerts</div><div class="v">${params.counts.alertCount}</div></div>
       </section>
 
       <section class="block">
         <div class="block-head">
-          <h2>Sources</h2>
-          <p>Homepage is now driven by live free-source data</p>
+          <h2>Early signal highlight</h2>
+          <p>This is the product's core differentiator</p>
         </div>
-        <div class="sources">${sources || `<div class="source"><span class="dot warn"></span>No sources yet</div>`}</div>
+        ${founderFeature}
       </section>
 
       <section class="block">
         <div class="block-head">
-          <h2>Latest official company</h2>
-          <p>Real data from YC / Speedrun, not seeded demo posts</p>
+          <h2>Discovery sources</h2>
+          <p>Primary public sources first, optional/demo sources separate</p>
         </div>
-        ${feature}
+        <div class="sources">${renderSourcePills(primarySourceHealth) || `<div class="source"><span class="dot warn"></span>No primary sources yet</div>`}</div>
+        ${
+          signalSourceHealth.length > 0
+            ? `<div style="margin-top:10px;" class="sources">${renderSourcePills(signalSourceHealth)}</div>`
+            : ""
+        }
       </section>
+
+      ${
+        feature
+          ? `<section class="block">
+              <div class="block-head">
+                <h2>Latest official company</h2>
+                <p>Real data from YC / Speedrun public listings</p>
+              </div>
+              ${feature}
+            </section>`
+          : ""
+      }
 
       ${
         rows
           ? `<section class="block">
               <div class="block-head"><h2>Recent companies</h2><p>Latest public listings pulled from free sources</p></div>
               <div class="list">${rows}</div>
-            </section>`
-          : ""
-      }
-
-      ${
-        latestSignal
-          ? `<section class="block">
-              <div class="block-head"><h2>Latest founder signal</h2><p>Separate from the official company feed</p></div>
-              <div class="surface">
-                <strong>${escapeHtml(latestSignal.company?.name ?? "Unknown company")}</strong>
-                <div style="margin-top:8px;color:var(--muted);">${escapeHtml(latestSignal.text)}</div>
-              </div>
             </section>`
           : ""
       }
