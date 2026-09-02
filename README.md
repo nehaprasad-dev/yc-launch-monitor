@@ -1,252 +1,304 @@
 # YC Launch Monitor
 
-YC Launch Monitor is a persistent monitoring agent that detects new YC and Speedrun companies and identifies founder-announced YC acceptance signals before official YC confirmation. It monitors source adapters, maintains persistent state to prevent duplicate alerts, classifies social signals, and delivers structured alerts to Slack.
+YC Launch Monitor is a small monitoring app for one very specific job:
 
-## What it does
+**catch founder-announced YC acceptance signals before the official YC directory catches up.**
 
-- Polls YC Directory as the source of truth for officially listed YC companies.
-- Polls YC Speedrun separately so Speedrun launches do not get merged into standard YC alerts.
-- Polls social sources through source adapters and classifies founder posts into deterministic signal outcomes.
-- Stores companies, founders, signals, source cursors, alerts, and monitor run history in Postgres.
-- Sends clean Slack alerts with confidence and evidence.
-- Exposes service endpoints for health, status, manual runs, and Pond-compatible agent execution.
+It also tracks official YC Directory and YC Speedrun listings, stores everything in Postgres, and sends alerts to Slack.
 
-## Core flow
+This project is meant to show the transition between:
+
+- a founder publicly saying "we got into YC"
+- and YC later listing that company officially
+
+That transition is the most important part of the product.
+
+## What the product does
+
+YC Launch Monitor watches a few sources, normalizes what it finds, and classifies each event into something useful.
+
+In plain English:
+
+- if a founder announces YC acceptance before YC lists the company, the app creates an **early signal**
+- if YC later lists the same company, the app records that as an **official confirmation**
+- it avoids spamming the user with duplicate generic alerts for the same company
+
+It also keeps a simple web dashboard so you can quickly see:
+
+- real YC companies pulled from free public sources
+- founder signals
+- source health
+- recent runs
+
+## Current sources
+
+### Official listing sources
+
+- **YC Directory**
+- **YC Speedrun**
+
+These are the public "source of truth" style inputs.
+
+### Founder-signal sources
+
+- **Social Inbox**: a free local inbox you can post to manually or via webhook
+- **X**: optional, only if you have an API token and funded credits
+- **Demo mode**: a fixture path for showing the product flow quickly
+
+### Not enabled by default
+
+- **LinkedIn** support is intentionally conservative and only makes sense with approved access
+
+## Why this is interesting
+
+Most startup directories tell you what is already official.
+
+This project tries to answer a slightly earlier question:
+
+**"Did a founder signal YC acceptance before the directory updated?"**
+
+That is the differentiator.
+
+## How it works
+
+The app follows a simple pipeline:
 
 ```text
-Scheduler
-  -> Monitor Engine
-     -> Source adapters
-        -> YC Directory
-        -> YC Speedrun
-        -> X
-        -> LinkedIn
-        -> Demo fixture
-     -> Normalization
-     -> Deduplication
-     -> Signal detection
-     -> Slack alerts
-     -> Postgres
+Sources -> normalization -> signal detection -> dedupe -> database -> Slack -> dashboard
 ```
 
-The most important state transition is:
+The important state transition is:
 
 ```text
 Founder announces YC acceptance
-  + not officially listed by YC
+  + company not officially listed yet
   -> EARLY_YC signal
-  -> EARLY YC SIGNAL Slack alert
+  -> Slack alert
 
-Founder announced earlier
-  + YC later lists the company
+Later, YC officially lists the company
   -> OFFICIAL_YC signal
-  -> YC CONFIRMED Slack alert
+  -> confirmation alert
 ```
-
-This prevents the monitor from sending a second generic "new company" alert after an early founder announcement has already fired.
 
 ## Stack
 
-- TypeScript + Node.js
+- TypeScript
+- Node.js
 - Express
 - PostgreSQL
-- Prisma ORM
-- OpenAI-compatible classifier path with a deterministic heuristic fallback
+- Prisma
+- Groq-compatible classification path with heuristic fallback
 - Slack Web API
-- HTML adapters for YC sources
 
 ## Routes
 
-- `GET /` live monitor dashboard
-- `GET /signals` signal timeline
-- `GET /settings` runtime settings summary
-- `GET /health` machine-readable health
-- `GET /status` machine-readable service status
-- `GET /ready` production readiness checks and blockers
-- `POST /run-now` manual monitor execution
-- `POST /reset-demo` clear demo companies/signals and replay the demo pipeline
-- `GET /manifest` Pond manifest
-- `POST /runs` Pond execution endpoint
-- `GET /tasks/:taskId` Pond task lookup
+### Dashboard routes
 
-## Production readiness
+- `GET /` dashboard
+- `GET /signals` official companies + founder signals
+- `GET /settings` runtime config summary
 
-Before calling this production-complete, verify:
+### Health and status
 
-1. Postgres is connected and schema is pushed.
-2. Slack delivery works by one of these:
-   - invite the bot into the target channel: `/invite @Alert Bot`
-   - or set `SLACK_WEBHOOK_URL` to an Incoming Webhook for that channel
-3. Groq is configured with `LLM_PROVIDER=groq` and `GROQ_API_KEY`.
-4. YC Directory and Speedrun sources are healthy.
-5. Demo replay works end to end:
-   ```bash
-   curl -X POST http://localhost:3000/reset-demo
-   curl -X POST http://localhost:3000/run-now \
-     -H "content-type: application/json" \
-     -d '{"sources":["DEMO"],"dry_run":false}'
-   ```
-6. Live X search requires active X API credits. A `402 credits depleted` response means the adapter is healthy in code but your X account needs billing top-up at [console.x.com](https://console.x.com).
-7. LinkedIn stays disabled unless you have approved access.
+- `GET /health`
+- `GET /status`
+- `GET /ready`
 
-Check readiness:
+### Actions
+
+- `POST /run-now`
+- `POST /social-inbox`
+- `POST /reset-demo`
+
+### Pond-compatible endpoints
+
+- `GET /manifest`
+- `POST /runs`
+- `GET /tasks/:taskId`
+
+## Quick start
+
+1. Install dependencies
 
 ```bash
-curl http://localhost:3000/ready
+npm install
+```
+
+2. Copy env file
+
+```bash
+cp .env.example .env
+```
+
+3. Push the Prisma schema
+
+```bash
+npm run prisma:push
+```
+
+4. Start the app
+
+```bash
+npm run dev
+```
+
+5. Open [http://localhost:3000](http://localhost:3000)
+
+## Environment variables
+
+You do not need every integration enabled on day one.
+
+The most important values are:
+
+- `DATABASE_URL`
+- `APP_BASE_URL`
+- `SLACK_BOT_TOKEN` and `SLACK_CHANNEL_ID`
+  or `SLACK_WEBHOOK_URL`
+- `LLM_PROVIDER`
+- `GROQ_API_KEY` if you use `groq`
+
+Optional values:
+
+- `ENABLE_X_SOURCE`
+- `X_BEARER_TOKEN`
+- `X_QUERIES`
+- `LINKEDIN_ENABLED`
+- `POND_BEARER_TOKEN`
+- `ENABLE_DEMO_MODE`
+
+## Running a manual monitor pass
+
+Example:
+
+```bash
+curl -X POST http://localhost:3000/run-now \
+  -H "content-type: application/json" \
+  -d '{"sources":["YC_DIRECTORY","YC_SPEEDRUN","SOCIAL_INBOX"],"dry_run":false}'
+```
+
+## Free founder-signal path
+
+If you do not want to pay for X API credits, use the free inbox.
+
+You can either edit `data/social-inbox.json` or post directly to the app:
+
+```bash
+curl -X POST http://localhost:3000/social-inbox \
+  -H "content-type: application/json" \
+  -d '{"authorName":"Priya Shah","authorHandle":"@priyashah","text":"We got into YC S26! Orbit Ledger is joining Y Combinator."}'
+```
+
+Then run the monitor:
+
+```bash
+curl -X POST http://localhost:3000/run-now \
+  -H "content-type: application/json" \
+  -d '{"sources":["SOCIAL_INBOX"],"dry_run":false}'
+```
+
+## Demo flow
+
+Demo mode exists so you can show the full product without waiting for a real founder post.
+
+Replay the demo:
+
+```bash
+curl -X POST http://localhost:3000/reset-demo
+
+curl -X POST http://localhost:3000/run-now \
+  -H "content-type: application/json" \
+  -d '{"sources":["DEMO"],"dry_run":false}'
+```
+
+That path should show the exact early-signal behavior in Slack and in the UI.
+
+## Slack setup
+
+You have two options:
+
+1. use a Slack bot token + channel ID
+2. use an Incoming Webhook
+
+If you use the bot path, make sure the bot is actually in the target channel:
+
+```text
+/invite @Alert Bot
+```
+
+## Deploy notes
+
+### Render
+
+Render is a better fit for the **persistent monitor** version of this project because the scheduler can stay alive.
+
+Use:
+
+- Build Command: `npm install && npm run build`
+- Start Command: `npm start`
+
+### Vercel
+
+Vercel works better for a **demo UI/API** version of the project, not for always-on background polling.
+
+For Vercel:
+
+- Framework Preset: `Other`
+- Build Command: `npm run build`
+- Output Directory: leave empty
+
+## Useful commands
+
+```bash
+npm run dev
+npm run build
+npm run typecheck
+npm run check
+npm run prisma:push
+npm run prisma:generate
 ```
 
 ## Project structure
 
 ```text
 src/
-  adapters/      source-specific collection logic
-  config/        environment parsing
-  monitor/       detection and orchestration
-  pages/         simple HTML rendering
-  repositories/  Prisma persistence layer
+  adapters/      source integrations
+  config/        env parsing
+  monitor/       orchestration and detection
+  pages/         HTML rendering
+  repositories/  database access
   server/        Express app
-  services/      classifier, Slack, scheduler
-tests/           focused decision logic tests
+  services/      Slack, scheduler, classifier
+api/             Vercel entrypoint
 prisma/          schema
-```
-
-## Environment
-
-Copy `.env.example` to `.env` and fill in the real credentials you want to enable:
-
-- `DATABASE_URL`
-- `X_BEARER_TOKEN`
-- `LINKEDIN_ACCESS_TOKEN` and `LINKEDIN_POSTS_ENDPOINT`
-- `SLACK_BOT_TOKEN`
-- `SLACK_CHANNEL_ID`
-- `OPENAI_API_KEY`
-- `POND_BEARER_TOKEN`
-
-Important notes:
-
-- The LinkedIn adapter is intentionally explicit about access. It only runs when a permitted endpoint and token are configured.
-- Prefer Groq with `LLM_PROVIDER=groq` and `GROQ_API_KEY`. If no LLM key is set and provider is `auto`/`heuristic`, the monitor falls back to deterministic heuristics.
-- Demo mode is enabled by default to make the early-signal flow easy to show without waiting for a live founder post.
-- Slack can use either bot posting (`SLACK_BOT_TOKEN` + `SLACK_CHANNEL_ID`) or `SLACK_WEBHOOK_URL`.
-- Live X search requires active X API credits. A `402` response means top up billing at console.x.com.
-
-## Setup
-
-1. Install dependencies:
-
-   ```bash
-   npm install
-   ```
-
-2. Generate Prisma client:
-
-   ```bash
-   npm run prisma:generate
-   ```
-
-3. Push the schema to Postgres:
-
-   ```bash
-   npm run prisma:push
-   ```
-
-4. Start the monitor:
-
-   ```bash
-   npm run dev
-   ```
-
-5. Open [http://localhost:3000](http://localhost:3000)
-
-## Running the monitor
-
-Manual run:
-
-```bash
-curl -X POST http://localhost:3000/run-now \
-  -H "content-type: application/json" \
-  -d '{"sources":["YC_DIRECTORY","YC_SPEEDRUN","X","LINKEDIN","DEMO"],"dry_run":false}'
-```
-
-Pond run:
-
-```bash
-curl -X POST http://localhost:3000/runs \
-  -H "authorization: Bearer <POND_BEARER_TOKEN>" \
-  -H "content-type: application/json" \
-  -d '{"run_id":"demo-run-1","sources":["YC_DIRECTORY","X","DEMO"],"dry_run":true}'
-```
-
-The `run_id` is treated idempotently. If Pond retries the same request, the stored result is returned instead of starting a duplicate run.
-
-## Testing
-
-The test suite focuses on the interesting business logic:
-
-- early signal detection
-- official confirmation transition
-- non-founder chatter rejection
-- low-confidence rejection
-- company matching by stable identifiers
-
-Run checks:
-
-```bash
-npm run check
+tests/           focused logic tests
 ```
 
 ## Known limitations
 
-- The YC adapters use resilient HTML parsing because the public directory is the available source of truth in this project. If YC changes markup, selectors may need updates.
-- The LinkedIn adapter is a legal-access wrapper, not a fake universal scraper.
-- The current Pond execution path completes synchronously and persists a task record for status lookup. If you want true long-running async execution later, the monitor engine can be moved behind a background queue without changing the core domain logic.
-- X recent search is paid. If your X account has no credits, leave `ENABLE_X_SOURCE=false` and use the free social inbox instead.
+- X Premium alone is not enough for live X search; you need X API access and credits.
+- X recent search is a paid dependency, so the free inbox is the safest no-cost fallback.
+- LinkedIn is intentionally not a fake universal scraper.
+- The UI is intentionally simple; the product value is in the signal transition logic.
+- Vercel is not ideal for the always-on scheduler part.
 
-### Free early signals (no X credits)
+## Status of the project
 
-Post founder announcements into the local inbox:
+This project is best understood as:
 
-```bash
-curl -X POST http://localhost:3000/social-inbox \
-  -H "content-type: application/json" \
-  -d '{"authorName":"Priya Shah","authorHandle":"@priyashah","text":"We got into YC S26! Orbit Ledger is joining Y Combinator."}'
+- a real monitoring prototype
+- with working Slack alerts, state, and source tracking
+- and a strong early-signal product idea
 
-curl -X POST http://localhost:3000/run-now \
-  -H "content-type: application/json" \
-  -d '{"sources":["SOCIAL_INBOX"],"dry_run":false}'
-```
+It is not pretending to be a perfect production intelligence platform yet.
 
-You can also edit `data/social-inbox.json`. Optional paid X: set `ENABLE_X_SOURCE=true` with a funded `X_BEARER_TOKEN`.
+## If you are evaluating the idea
 
-## Production checklist
+The key question is not:
 
-1. Invite the Slack bot into the channel:
-   ```text
-   /invite @Alert Bot
-   ```
-   Or create an Incoming Webhook and set `SLACK_WEBHOOK_URL`.
-2. Confirm readiness:
-   ```bash
-   curl http://localhost:3000/ready
-   ```
-3. Reset and replay the demo path:
-   ```bash
-   curl -X POST http://localhost:3000/reset-demo
-   curl -X POST http://localhost:3000/run-now \
-     -H "content-type: application/json" \
-     -d '{"sources":["DEMO"],"dry_run":false}'
-   ```
-4. Confirm dashboard shows `Acme AI` and Slack receives the early-signal alert.
-5. For live X, top up API credits, set `ENABLE_X_SOURCE=true`, then run with `"sources":["X"]`.
+**"Can this list YC companies?"**
 
-## Demo path
+The key question is:
 
-With demo mode enabled, a fixture founder post flows through the exact same production pipeline:
+**"Can this reliably surface meaningful founder-announced YC signals before official confirmation?"**
 
-1. demo social post appears
-2. classifier extracts company, batch, and confidence
-3. deterministic logic checks YC confirmation state
-4. early alert or confirmation alert is persisted
-5. Slack payload is produced
-
-This makes it easy to demonstrate the differentiator: early signal detection before official YC listing.
+That is what this project is built to explore.
