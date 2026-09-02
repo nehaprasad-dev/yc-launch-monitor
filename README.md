@@ -62,10 +62,38 @@ This prevents the monitor from sending a second generic "new company" alert afte
 - `GET /settings` runtime settings summary
 - `GET /health` machine-readable health
 - `GET /status` machine-readable service status
+- `GET /ready` production readiness checks and blockers
 - `POST /run-now` manual monitor execution
+- `POST /reset-demo` clear demo companies/signals and replay the demo pipeline
 - `GET /manifest` Pond manifest
 - `POST /runs` Pond execution endpoint
 - `GET /tasks/:taskId` Pond task lookup
+
+## Production readiness
+
+Before calling this production-complete, verify:
+
+1. Postgres is connected and schema is pushed.
+2. Slack delivery works by one of these:
+   - invite the bot into the target channel: `/invite @Alert Bot`
+   - or set `SLACK_WEBHOOK_URL` to an Incoming Webhook for that channel
+3. Groq is configured with `LLM_PROVIDER=groq` and `GROQ_API_KEY`.
+4. YC Directory and Speedrun sources are healthy.
+5. Demo replay works end to end:
+   ```bash
+   curl -X POST http://localhost:3000/reset-demo
+   curl -X POST http://localhost:3000/run-now \
+     -H "content-type: application/json" \
+     -d '{"sources":["DEMO"],"dry_run":false}'
+   ```
+6. Live X search requires active X API credits. A `402 credits depleted` response means the adapter is healthy in code but your X account needs billing top-up at [console.x.com](https://console.x.com).
+7. LinkedIn stays disabled unless you have approved access.
+
+Check readiness:
+
+```bash
+curl http://localhost:3000/ready
+```
 
 ## Project structure
 
@@ -97,8 +125,10 @@ Copy `.env.example` to `.env` and fill in the real credentials you want to enabl
 Important notes:
 
 - The LinkedIn adapter is intentionally explicit about access. It only runs when a permitted endpoint and token are configured.
-- If `OPENAI_API_KEY` is not configured, the monitor uses a heuristic classifier so the pipeline still works in development and demo mode.
+- Prefer Groq with `LLM_PROVIDER=groq` and `GROQ_API_KEY`. If no LLM key is set and provider is `auto`/`heuristic`, the monitor falls back to deterministic heuristics.
 - Demo mode is enabled by default to make the early-signal flow easy to show without waiting for a live founder post.
+- Slack can use either bot posting (`SLACK_BOT_TOKEN` + `SLACK_CHANNEL_ID`) or `SLACK_WEBHOOK_URL`.
+- Live X search requires active X API credits. A `402` response means top up billing at console.x.com.
 
 ## Setup
 
@@ -170,6 +200,44 @@ npm run check
 - The YC adapters use resilient HTML parsing because the public directory is the available source of truth in this project. If YC changes markup, selectors may need updates.
 - The LinkedIn adapter is a legal-access wrapper, not a fake universal scraper.
 - The current Pond execution path completes synchronously and persists a task record for status lookup. If you want true long-running async execution later, the monitor engine can be moved behind a background queue without changing the core domain logic.
+- X recent search is paid. If your X account has no credits, leave `ENABLE_X_SOURCE=false` and use the free social inbox instead.
+
+### Free early signals (no X credits)
+
+Post founder announcements into the local inbox:
+
+```bash
+curl -X POST http://localhost:3000/social-inbox \
+  -H "content-type: application/json" \
+  -d '{"authorName":"Priya Shah","authorHandle":"@priyashah","text":"We got into YC S26! Orbit Ledger is joining Y Combinator."}'
+
+curl -X POST http://localhost:3000/run-now \
+  -H "content-type: application/json" \
+  -d '{"sources":["SOCIAL_INBOX"],"dry_run":false}'
+```
+
+You can also edit `data/social-inbox.json`. Optional paid X: set `ENABLE_X_SOURCE=true` with a funded `X_BEARER_TOKEN`.
+
+## Production checklist
+
+1. Invite the Slack bot into the channel:
+   ```text
+   /invite @Alert Bot
+   ```
+   Or create an Incoming Webhook and set `SLACK_WEBHOOK_URL`.
+2. Confirm readiness:
+   ```bash
+   curl http://localhost:3000/ready
+   ```
+3. Reset and replay the demo path:
+   ```bash
+   curl -X POST http://localhost:3000/reset-demo
+   curl -X POST http://localhost:3000/run-now \
+     -H "content-type: application/json" \
+     -d '{"sources":["DEMO"],"dry_run":false}'
+   ```
+4. Confirm dashboard shows `Acme AI` and Slack receives the early-signal alert.
+5. For live X, top up API credits, set `ENABLE_X_SOURCE=true`, then run with `"sources":["X"]`.
 
 ## Demo path
 

@@ -14,19 +14,24 @@ async function slackCall(method: string, body: Record<string, unknown>) {
 }
 
 async function main() {
-  const channel = process.env.SLACK_CHANNEL_ID;
+  if (process.env.SLACK_WEBHOOK_URL) {
+    const response = await fetch(process.env.SLACK_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ text: "YC Launch Monitor Slack webhook test: alerts are connected." }),
+    });
 
-  if (!process.env.SLACK_BOT_TOKEN || !channel) {
-    throw new Error("SLACK_BOT_TOKEN and SLACK_CHANNEL_ID are required");
-  }
-
-  const join = await slackCall("conversations.join", { channel });
-
-  if (!join.ok && join.error !== "method_not_supported_for_channel_type" && join.error !== "already_in_channel") {
-    console.log(JSON.stringify({ joined: false, joinError: join.error }, null, 2));
+    console.log(JSON.stringify({ mode: "webhook", messageSent: response.ok, status: response.status }, null, 2));
     return;
   }
 
+  const channel = process.env.SLACK_CHANNEL_ID;
+
+  if (!process.env.SLACK_BOT_TOKEN || !channel) {
+    throw new Error("Set SLACK_WEBHOOK_URL, or SLACK_BOT_TOKEN + SLACK_CHANNEL_ID");
+  }
+
+  const join = await slackCall("conversations.join", { channel });
   const message = await slackCall("chat.postMessage", {
     channel,
     text: "YC Launch Monitor Slack test: alerts are connected.",
@@ -35,10 +40,17 @@ async function main() {
   console.log(
     JSON.stringify(
       {
+        mode: "bot",
         joined: join.ok || join.error === "already_in_channel",
         joinError: join.error,
         messageSent: message.ok,
         messageError: message.error,
+        nextStep:
+          message.error === "not_in_channel"
+            ? "In Slack, open the channel and type: /invite @Alert Bot"
+            : message.ok
+              ? "Slack delivery is working"
+              : "Check bot scopes and reinstall the Slack app",
       },
       null,
       2,

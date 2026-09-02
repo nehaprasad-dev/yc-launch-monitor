@@ -1,13 +1,30 @@
 import { prisma } from "../src/db.js";
 
 async function main() {
-  const signals = await prisma.signal.deleteMany({
+  const demoSignals = await prisma.signal.findMany({
     where: {
-      OR: [{ externalId: "demo-post-1" }, { company: { name: "We" } }],
+      OR: [{ externalId: { startsWith: "demo-post-" } }, { company: { name: { in: ["We", "Acme AI"] } } }],
+    },
+    select: { id: true },
+  });
+
+  const signalIds = demoSignals.map((signal) => signal.id);
+
+  const deletedAlerts =
+    signalIds.length > 0
+      ? await prisma.alert.deleteMany({
+          where: { signalId: { in: signalIds } },
+        })
+      : { count: 0 };
+
+  const deletedSignals = await prisma.signal.deleteMany({
+    where: {
+      OR: [{ id: { in: signalIds } }, { externalId: { startsWith: "demo-post-" } }],
     },
   });
-  const companies = await prisma.company.deleteMany({
-    where: { name: "We" },
+
+  const deletedCompanies = await prisma.company.deleteMany({
+    where: { name: { in: ["We", "Acme AI"] } },
   });
 
   await prisma.sourceSnapshot.deleteMany({
@@ -17,8 +34,9 @@ async function main() {
   console.log(
     JSON.stringify(
       {
-        deletedSignals: signals.count,
-        deletedCompanies: companies.count,
+        deletedAlerts: deletedAlerts.count,
+        deletedSignals: deletedSignals.count,
+        deletedCompanies: deletedCompanies.count,
         resetDemoCursor: true,
       },
       null,

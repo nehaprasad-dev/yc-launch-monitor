@@ -13,11 +13,15 @@ export class MonitorScheduler {
     const intervalMs = env.POLL_INTERVAL_HOURS * 60 * 60 * 1000;
 
     this.timer = setInterval(() => {
-      void this.safeRun(defaultSources, "scheduler");
+      void this.safeRun(defaultSources, "scheduler").catch((error) => {
+        console.error("Scheduled monitor run failed:", error instanceof Error ? error.message : error);
+      });
     }, intervalMs);
 
     if (env.RUN_ON_BOOT) {
-      void this.safeRun(defaultSources, "boot");
+      void this.safeRun(defaultSources, "boot").catch((error) => {
+        console.error("Boot monitor run failed:", error instanceof Error ? error.message : error);
+      });
     }
   }
 

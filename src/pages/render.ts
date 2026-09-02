@@ -2,93 +2,500 @@ import type { Signal } from "@prisma/client";
 
 import type { SourceHealthSummary } from "../monitor/types.js";
 
-function pageShell(title: string, body: string): string {
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function signalLabel(type: string): string {
+  if (type === "EARLY_YC") return "Early YC";
+  if (type === "SPEEDRUN") return "Speedrun";
+  return "Confirmed";
+}
+
+function healthClass(status: string): string {
+  if (status === "healthy") return "ok";
+  if (status === "degraded") return "warn";
+  return "bad";
+}
+
+function pageShell(title: string, active: "home" | "signals" | "settings", body: string): string {
   return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${title}</title>
+    <title>${escapeHtml(title)}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet" />
     <style>
       :root {
-        color-scheme: dark;
-        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+        --bg: #E9EDF5;
+        --bg-deep: #DDE4F0;
+        --ink: #12182A;
+        --muted: #5B6478;
+        --faint: #8791A6;
+        --line: rgba(18, 24, 42, 0.1);
+        --accent: #E85D4C;
+        --accent-soft: #FFD8D2;
+        --teal: #0F8A75;
+        --teal-soft: #D4F0EA;
+        --amber: #C98512;
+        --amber-soft: #F8E7C2;
+        --surface: rgba(255, 255, 255, 0.72);
+        --font: "Outfit", sans-serif;
+        --display: "Syne", sans-serif;
       }
+
+      * { box-sizing: border-box; }
+      html, body { margin: 0; min-height: 100%; }
       body {
-        margin: 0;
-        background: #0b1020;
-        color: #ebf1ff;
+        font-family: var(--font);
+        color: var(--ink);
+        background:
+          radial-gradient(ellipse 70% 45% at 0% 0%, rgba(232, 93, 76, 0.16), transparent 55%),
+          radial-gradient(ellipse 55% 40% at 100% 8%, rgba(15, 138, 117, 0.14), transparent 50%),
+          linear-gradient(165deg, #F3F5FA 0%, var(--bg) 48%, var(--bg-deep) 100%);
+        background-attachment: fixed;
       }
-      a { color: #8bb8ff; }
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0.22;
+        background:
+          repeating-linear-gradient(
+            -18deg,
+            transparent,
+            transparent 11px,
+            rgba(18, 24, 42, 0.035) 11px,
+            rgba(18, 24, 42, 0.035) 12px
+          );
+      }
+
+      a { color: inherit; text-decoration: none; }
+      a:hover { color: var(--accent); }
+
       .wrap {
-        max-width: 1080px;
+        position: relative;
+        z-index: 1;
+        width: min(1080px, calc(100% - 32px));
         margin: 0 auto;
-        padding: 32px 20px 56px;
+        padding: 26px 0 64px;
       }
-      .nav {
+
+      header.site {
         display: flex;
+        align-items: center;
+        justify-content: space-between;
         gap: 16px;
-        margin-bottom: 24px;
+        margin-bottom: 40px;
+        animation: in 500ms ease both;
       }
-      .grid {
-        display: grid;
-        gap: 16px;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      .logo {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        font-family: var(--display);
+        font-weight: 800;
+        font-size: 26px;
+        letter-spacing: -0.04em;
       }
-      .card {
-        background: #131b31;
-        border: 1px solid #263252;
-        border-radius: 16px;
-        padding: 18px;
+      .logo em {
+        font-style: normal;
+        color: var(--accent);
       }
-      .eyebrow {
-        color: #9fb2d9;
+      .logo span {
+        font-family: var(--font);
         font-size: 12px;
+        font-weight: 600;
+        color: var(--faint);
+        letter-spacing: 0.04em;
         text-transform: uppercase;
-        letter-spacing: 0.08em;
       }
-      .value {
-        font-size: 28px;
-        font-weight: 700;
-        margin-top: 6px;
+      nav {
+        display: flex;
+        gap: 4px;
       }
-      .signal {
+      nav a {
+        padding: 8px 12px;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--muted);
+        border-bottom: 2px solid transparent;
+      }
+      nav a.active {
+        color: var(--ink);
+        border-bottom-color: var(--accent);
+      }
+
+      .intro {
         display: grid;
-        gap: 10px;
+        grid-template-columns: 1.2fr 0.8fr;
+        gap: 28px;
+        align-items: end;
+        margin-bottom: 36px;
+        animation: in 600ms ease both;
       }
-      .pill {
-        display: inline-block;
-        border-radius: 999px;
-        padding: 4px 10px;
+      .intro h1 {
+        margin: 0 0 12px;
+        font-family: var(--display);
+        font-size: clamp(2rem, 4.5vw, 3.25rem);
+        line-height: 1.02;
+        letter-spacing: -0.045em;
+        max-width: 13ch;
+      }
+      .intro p {
+        margin: 0;
+        max-width: 38ch;
+        color: var(--muted);
+        font-size: 1.05rem;
+        line-height: 1.55;
+      }
+      .pulse {
+        justify-self: end;
+        text-align: right;
+      }
+      .pulse .live {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
         font-size: 12px;
         font-weight: 700;
-        background: #233052;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--teal);
       }
-      .ok { color: #7ee787; }
-      .warn { color: #f2cc60; }
-      table {
-        width: 100%;
-        border-collapse: collapse;
+      .pulse .live i {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--teal);
+        box-shadow: 0 0 0 0 rgba(15, 138, 117, 0.55);
+        animation: ping 1.8s ease infinite;
       }
-      td, th {
+      .pulse .when {
+        color: var(--faint);
+        font-size: 13px;
+        font-weight: 500;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 18px;
+      }
+      .btn {
+        appearance: none;
+        border: 0;
+        cursor: pointer;
+        font: inherit;
+        font-weight: 700;
+        font-size: 14px;
+        padding: 11px 16px;
+        border-radius: 4px;
+        transition: transform 150ms ease, background 150ms ease;
+      }
+      .btn:hover { transform: translateY(-1px); }
+      .btn-main {
+        background: var(--ink);
+        color: #fff;
+      }
+      .btn-main:hover { background: #242C44; }
+      .btn-side {
+        background: transparent;
+        color: var(--ink);
+        border: 1.5px solid var(--line);
+      }
+
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0;
+        margin-bottom: 28px;
+        border-top: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+        animation: in 700ms ease both;
+      }
+      .metric {
+        padding: 22px 8px 20px;
+        border-right: 1px solid var(--line);
+      }
+      .metric:last-child { border-right: 0; }
+      .metric .k {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--faint);
+      }
+      .metric .v {
+        margin-top: 6px;
+        font-family: var(--display);
+        font-size: 2rem;
+        font-weight: 700;
+        letter-spacing: -0.04em;
+      }
+
+      .block {
+        margin-bottom: 28px;
+        animation: in 750ms ease both;
+      }
+      .block-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+      .block-head h2 {
+        margin: 0;
+        font-family: var(--display);
+        font-size: 1.35rem;
+        letter-spacing: -0.03em;
+      }
+      .block-head p {
+        margin: 0;
+        color: var(--faint);
+        font-size: 13px;
+      }
+
+      .sources {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .source {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: 600;
+        backdrop-filter: blur(8px);
+      }
+      .source .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--faint);
+      }
+      .source .ok { background: var(--teal); }
+      .source .warn { background: var(--amber); }
+      .source .bad { background: var(--accent); }
+      .source .label.ok { color: var(--teal); }
+      .source .label.warn { color: var(--amber); }
+      .source .label.bad { color: var(--accent); }
+
+      .feature {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        gap: 18px;
+        align-items: start;
+        padding: 22px 0;
+        border-top: 2px solid var(--ink);
+        border-bottom: 1px solid var(--line);
+      }
+      .feature .badge {
+        display: inline-block;
+        padding: 5px 9px;
+        background: var(--accent);
+        color: #fff;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        border-radius: 3px;
+      }
+      .feature h3 {
+        margin: 0 0 6px;
+        font-family: var(--display);
+        font-size: 1.6rem;
+        letter-spacing: -0.03em;
+      }
+      .feature .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 14px;
+        margin-bottom: 10px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .feature .text {
+        color: var(--muted);
+        line-height: 1.5;
+        max-width: 60ch;
+      }
+      .feature .conf {
+        text-align: right;
+        font-family: var(--display);
+        font-size: 2rem;
+        font-weight: 700;
+        letter-spacing: -0.04em;
+        color: var(--teal);
+      }
+      .feature .conf small {
+        display: block;
+        margin-top: 2px;
+        font-family: var(--font);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--faint);
+      }
+      .feature a {
+        color: var(--ink);
+        font-weight: 700;
+        border-bottom: 2px solid var(--accent-soft);
+      }
+      .feature a:hover { border-bottom-color: var(--accent); }
+
+      .list {
+        display: grid;
+        gap: 0;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: 110px 1fr auto;
+        gap: 16px;
+        align-items: start;
+        padding: 16px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .row .type {
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--accent);
+        padding-top: 4px;
+      }
+      .row h4 {
+        margin: 0 0 4px;
+        font-size: 1.05rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      .row .sub {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      .row .side {
+        text-align: right;
+        color: var(--faint);
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      .surface {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 8px 14px;
+        backdrop-filter: blur(10px);
+      }
+
+      table { width: 100%; border-collapse: collapse; }
+      th, td {
         text-align: left;
-        padding: 12px 10px;
-        border-bottom: 1px solid #263252;
+        padding: 14px 8px;
+        border-bottom: 1px solid var(--line);
+        font-size: 14px;
+      }
+      th {
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--faint);
+        font-weight: 700;
+      }
+      tr:hover td { background: rgba(232, 93, 76, 0.04); }
+
+      .settings { display: grid; gap: 10px; }
+      .setting {
+        padding: 14px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .setting .k {
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--faint);
       }
       code {
-        background: #111827;
-        padding: 2px 6px;
-        border-radius: 6px;
+        display: inline-block;
+        margin-top: 6px;
+        font-size: 13px;
+        color: var(--ink);
+        word-break: break-word;
+      }
+
+      .page-title {
+        margin: 0 0 8px;
+        font-family: var(--display);
+        font-size: clamp(1.8rem, 3.5vw, 2.5rem);
+        letter-spacing: -0.04em;
+      }
+      .page-lead {
+        margin: 0 0 24px;
+        color: var(--muted);
+        max-width: 48ch;
+        line-height: 1.5;
+      }
+      .empty {
+        padding: 28px 0;
+        color: var(--muted);
+        border-top: 1px solid var(--line);
+      }
+
+      @keyframes in {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: none; }
+      }
+      @keyframes ping {
+        0% { box-shadow: 0 0 0 0 rgba(15, 138, 117, 0.45); }
+        70% { box-shadow: 0 0 0 10px rgba(15, 138, 117, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(15, 138, 117, 0); }
+      }
+
+      @media (max-width: 820px) {
+        .intro { grid-template-columns: 1fr; }
+        .pulse { justify-self: start; text-align: left; }
+        .metrics { grid-template-columns: 1fr 1fr; }
+        .metric:nth-child(2) { border-right: 0; }
+        .metric:nth-child(3), .metric:nth-child(4) { border-top: 1px solid var(--line); }
+        .feature { grid-template-columns: 1fr; }
+        .feature .conf { text-align: left; }
+        .row { grid-template-columns: 1fr; gap: 6px; }
+        .row .side { text-align: left; }
+        header.site { flex-wrap: wrap; }
       }
     </style>
   </head>
   <body>
     <div class="wrap">
-      <div class="nav">
-        <a href="/">Live monitor</a>
-        <a href="/signals">Signals</a>
-        <a href="/settings">Settings</a>
-      </div>
+      <header class="site">
+        <div class="logo">YC<em>Monitor</em> <span>launch watch</span></div>
+        <nav aria-label="Primary">
+          <a class="${active === "home" ? "active" : ""}" href="/">Monitor</a>
+          <a class="${active === "signals" ? "active" : ""}" href="/signals">Signals</a>
+          <a class="${active === "settings" ? "active" : ""}" href="/settings">Settings</a>
+        </nav>
+      </header>
       ${body}
     </div>
   </body>
@@ -108,48 +515,108 @@ export function renderDashboard(params: {
   sourceHealth: SourceHealthSummary[];
   schedulerRunning: boolean;
 }): string {
-  const latestSignal = params.signals[0];
-  const sourceList = params.sourceHealth
-    .map((health) => {
-      const statusClass = health.status === "healthy" ? "ok" : health.status === "degraded" ? "warn" : "";
-      return `<div>${health.source}: <span class="${statusClass}">${health.status}</span></div>`;
-    })
+  const latest = params.signals[0];
+  const rest = params.signals.slice(1, 5);
+
+  const sources = params.sourceHealth
+    .map(
+      (health) => `
+        <div class="source">
+          <span class="dot ${healthClass(health.status)}"></span>
+          ${escapeHtml(health.source)}
+          <span class="label ${healthClass(health.status)}">${escapeHtml(health.status)}</span>
+        </div>`,
+    )
     .join("");
 
-  const hero = latestSignal
+  const feature = latest
     ? `
-      <div class="card signal">
-        <div class="eyebrow">${latestSignal.signalType === "EARLY_YC" ? "Early signal" : latestSignal.signalType === "SPEEDRUN" ? "New Speedrun company" : "Official confirmation"}</div>
-        <div class="value" style="font-size: 24px;">${latestSignal.company?.name ?? "Unknown company"}</div>
-        <div>Founder: ${latestSignal.founder?.name ?? "Unknown"}</div>
-        <div>Batch: ${latestSignal.company?.batch ?? latestSignal.batch ?? "Unknown"}</div>
-        <div>Source: ${latestSignal.platform}</div>
-        <div>${latestSignal.text}</div>
-        <div>${latestSignal.signalType === "EARLY_YC" ? "Not yet confirmed by YC" : "Officially confirmed"}</div>
-        <div><a href="${latestSignal.url}">View source</a>${latestSignal.company?.ycUrl ? ` · <a href="${latestSignal.company.ycUrl}">Company</a>` : ""}</div>
-      </div>
-    `
-    : `<div class="card">No signals captured yet.</div>`;
+      <div class="feature">
+        <div><span class="badge">${escapeHtml(signalLabel(latest.signalType))}</span></div>
+        <div>
+          <h3>${escapeHtml(latest.company?.name ?? "Unknown company")}</h3>
+          <div class="meta">
+            <span>${escapeHtml(latest.founder?.name ?? "Unknown founder")}</span>
+            <span>${escapeHtml(latest.company?.batch ?? latest.batch ?? "Batch TBD")}</span>
+            <span>${escapeHtml(latest.platform)}</span>
+          </div>
+          <div class="text">${escapeHtml(latest.text)}</div>
+          <div style="margin-top:12px;">
+            <a href="${escapeHtml(latest.url)}">Open source</a>
+            ${latest.company?.ycUrl ? ` · <a href="${escapeHtml(latest.company.ycUrl)}">YC page</a>` : ""}
+          </div>
+        </div>
+        <div class="conf">${Math.round(latest.confidence * 100)}%<small>confidence</small></div>
+      </div>`
+    : `<div class="empty">No signals yet. Run a scan or POST to <code>/social-inbox</code>.</div>`;
+
+  const rows = rest
+    .map(
+      (signal) => `
+        <div class="row">
+          <div class="type">${escapeHtml(signalLabel(signal.signalType))}</div>
+          <div>
+            <h4>${escapeHtml(signal.company?.name ?? "Unknown")}</h4>
+            <div class="sub">${escapeHtml(signal.founder?.name ?? "Unknown")} · ${escapeHtml(signal.text.slice(0, 120))}${signal.text.length > 120 ? "…" : ""}</div>
+          </div>
+          <div class="side">${Math.round(signal.confidence * 100)}% · <a href="${escapeHtml(signal.url)}">link</a></div>
+        </div>`,
+    )
+    .join("");
 
   return pageShell(
     "YC Launch Monitor",
+    "home",
     `
-      <h1>YC Launch Monitor</h1>
-      <div class="card" style="margin-bottom: 16px;">
-        <div class="eyebrow">Monitoring</div>
-        <div class="value" style="font-size: 22px;">${params.schedulerRunning ? "Running" : "Idle"}</div>
-        <div>Last scan: ${params.latestRunLabel}</div>
-        <div>Next run: ${params.nextRunLabel}</div>
-        <div style="margin-top: 10px;">${sourceList}</div>
-      </div>
-      <div class="grid">
-        <div class="card"><div class="eyebrow">Companies tracked</div><div class="value">${params.counts.companyCount}</div></div>
-        <div class="card"><div class="eyebrow">Signals this week</div><div class="value">${params.counts.signalCount}</div></div>
-        <div class="card"><div class="eyebrow">Early signals</div><div class="value">${params.counts.earlySignalCount}</div></div>
-        <div class="card"><div class="eyebrow">Alerts sent</div><div class="value">${params.counts.alertCount}</div></div>
-      </div>
-      <h2 style="margin-top: 28px;">Latest signal</h2>
-      ${hero}
+      <section class="intro">
+        <div>
+          <h1>Catch YC news before the directory does.</h1>
+          <p>Watch official listings and founder announcements, classify early signals, and push Slack alerts when something new lands.</p>
+          <div class="actions">
+            <form method="post" action="/run-now" onsubmit="event.preventDefault(); fetch('/run-now',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json()).then(()=>location.reload());">
+              <button class="btn btn-main" type="submit">Run scan now</button>
+            </form>
+            <a class="btn btn-side" href="/signals">All signals</a>
+          </div>
+        </div>
+        <div class="pulse">
+          <div class="live"><i></i>${params.schedulerRunning ? "Monitoring" : "Idle"}</div>
+          <div class="when">Last scan ${escapeHtml(params.latestRunLabel)}</div>
+          <div class="when">Next ${escapeHtml(params.nextRunLabel)}</div>
+        </div>
+      </section>
+
+      <section class="metrics">
+        <div class="metric"><div class="k">Companies</div><div class="v">${params.counts.companyCount}</div></div>
+        <div class="metric"><div class="k">Signals</div><div class="v">${params.counts.signalCount}</div></div>
+        <div class="metric"><div class="k">Early</div><div class="v">${params.counts.earlySignalCount}</div></div>
+        <div class="metric"><div class="k">Alerts</div><div class="v">${params.counts.alertCount}</div></div>
+      </section>
+
+      <section class="block">
+        <div class="block-head">
+          <h2>Sources</h2>
+          <p>Inbox works without X credits</p>
+        </div>
+        <div class="sources">${sources || `<div class="source"><span class="dot warn"></span>No sources yet</div>`}</div>
+      </section>
+
+      <section class="block">
+        <div class="block-head">
+          <h2>Latest hit</h2>
+          <p>Most recent classified signal</p>
+        </div>
+        ${feature}
+      </section>
+
+      ${
+        rows
+          ? `<section class="block">
+              <div class="block-head"><h2>Recent</h2><p>Earlier in the feed</p></div>
+              <div class="list">${rows}</div>
+            </section>`
+          : ""
+      }
     `,
   );
 }
@@ -166,22 +633,23 @@ export function renderSignalsPage(
     .map(
       (signal) => `
         <tr>
-          <td>${signal.detectedAt.toISOString()}</td>
-          <td>${signal.signalType}</td>
-          <td>${signal.company?.name ?? "Unknown"}</td>
-          <td>${signal.founder?.name ?? "Unknown"}</td>
+          <td>${escapeHtml(signal.detectedAt.toISOString().replace("T", " ").slice(0, 19))}</td>
+          <td>${escapeHtml(signal.signalType)}</td>
+          <td>${escapeHtml(signal.company?.name ?? "Unknown")}</td>
+          <td>${escapeHtml(signal.founder?.name ?? "Unknown")}</td>
           <td>${Math.round(signal.confidence * 100)}%</td>
-          <td><a href="${signal.url}">Source</a></td>
-        </tr>
-      `,
+          <td><a href="${escapeHtml(signal.url)}">Open</a></td>
+        </tr>`,
     )
     .join("");
 
   return pageShell(
-    "Signals",
+    "Signals · YC Launch Monitor",
+    "signals",
     `
-      <h1>Signals</h1>
-      <div class="card">
+      <h1 class="page-title">Signals</h1>
+      <p class="page-lead">Every early announcement and official confirmation classified by the monitor.</p>
+      <div class="surface">
         <table>
           <thead>
             <tr>
@@ -190,7 +658,7 @@ export function renderSignalsPage(
               <th>Company</th>
               <th>Founder</th>
               <th>Confidence</th>
-              <th>Link</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>${rows || `<tr><td colspan="6">No signals yet.</td></tr>`}</tbody>
@@ -202,13 +670,20 @@ export function renderSignalsPage(
 
 export function renderSettingsPage(settings: Record<string, string>): string {
   return pageShell(
-    "Settings",
+    "Settings · YC Launch Monitor",
+    "settings",
     `
-      <h1>Settings</h1>
-      <div class="card">
-        <p>This page surfaces the active runtime configuration used by the monitor.</p>
+      <h1 class="page-title">Settings</h1>
+      <p class="page-lead">Active runtime config. Early signals work via social inbox without X API credits.</p>
+      <div class="settings">
         ${Object.entries(settings)
-          .map(([key, value]) => `<div style="margin-bottom: 10px;"><span class="eyebrow">${key}</span><br /><code>${value}</code></div>`)
+          .map(
+            ([key, value]) => `
+              <div class="setting">
+                <div class="k">${escapeHtml(key)}</div>
+                <code>${escapeHtml(value)}</code>
+              </div>`,
+          )
           .join("")}
       </div>
     `,

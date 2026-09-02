@@ -48,6 +48,22 @@ const xApiResponseSchema = z.object({
     .optional(),
 });
 
+function describeXFailure(status: number, bodyText: string): string {
+  if (status === 402) {
+    return "X API credits depleted. Top up billing at https://console.x.com and retry recent search.";
+  }
+
+  if (status === 401 || status === 403) {
+    return `X recent search unauthorized (${status}). Check X_BEARER_TOKEN and app access level.`;
+  }
+
+  if (status === 429) {
+    return "X recent search rate limited. The monitor will retry on the next scheduled run.";
+  }
+
+  return `X recent search failed with status ${status}: ${bodyText.slice(0, 240)}`;
+}
+
 export class XSource implements MonitorSource {
   readonly source: SourceName = "X";
 
@@ -85,7 +101,19 @@ export class XSource implements MonitorSource {
       });
 
       if (!response.ok) {
-        throw new Error(`X recent search failed with status ${response.status}`);
+        const bodyText = await response.text();
+        return {
+          source: this.source,
+          posts: [],
+          cursor,
+          observedAt: new Date(),
+          health: "degraded",
+          errorReason: describeXFailure(response.status, bodyText),
+          metadata: {
+            status: response.status,
+            queries: env.xQueries,
+          },
+        };
       }
 
       const json = xApiResponseSchema.parse(await response.json());

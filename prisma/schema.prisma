@@ -23,6 +23,7 @@ enum SourceName {
   X
   LINKEDIN
   DEMO
+  SOCIAL_INBOX
 }
 
 enum AlertType {

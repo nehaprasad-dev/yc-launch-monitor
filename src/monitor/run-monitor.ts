@@ -3,6 +3,7 @@ import type { MonitorRunStatus, SourceName } from "@prisma/client";
 import { env } from "../config/env.js";
 import { DemoSource } from "../adapters/demo-source.js";
 import { LinkedInSource } from "../adapters/linkedin-source.js";
+import { SocialInboxSource } from "../adapters/social-inbox-source.js";
 import { XSource } from "../adapters/x-source.js";
 import { YcDirectorySource } from "../adapters/yc-directory-source.js";
 import { YcSpeedrunSource } from "../adapters/yc-speedrun-source.js";
@@ -19,6 +20,7 @@ export class MonitorEngine {
   private readonly sources = new Map<SourceName, MonitorSource>([
     ["YC_DIRECTORY", new YcDirectorySource()],
     ["YC_SPEEDRUN", new YcSpeedrunSource()],
+    ["SOCIAL_INBOX", new SocialInboxSource()],
     ["X", new XSource()],
     ["LINKEDIN", new LinkedInSource()],
     ["DEMO", new DemoSource()],
@@ -49,6 +51,10 @@ export class MonitorEngine {
           errorReason: result.errorReason,
           metadata: result.metadata,
         });
+
+        if (result.health === "degraded" && result.errorReason) {
+          errors.push({ source: sourceName, message: result.errorReason });
+        }
 
         if (result.companies?.length) {
           for (const company of result.companies) {

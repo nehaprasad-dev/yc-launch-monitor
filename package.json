@@ -14,7 +14,10 @@
     "check": "npm run typecheck && npm run test",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:push": "prisma db push"
+    "prisma:push": "prisma db push",
+    "demo:reset": "tsx scripts/reset-demo-data.ts",
+    "demo:run": "tsx scripts/test-demo-run.ts",
+    "slack:test": "tsx scripts/test-slack.ts"
   },
   "repository": {
     "type": "git",
