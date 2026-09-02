@@ -20,6 +20,51 @@ if (env.ENABLE_DEMO_MODE) {
   defaultSources.push("DEMO");
 }
 
+const SEEDED_COMPANY_NAMES = ["We", "Acme AI", "Orbit Ledger"];
+
+async function purgeSeededData() {
+  const seededSignals = await prisma.signal.findMany({
+    where: {
+      OR: [
+        { externalId: { startsWith: "demo-post-" } },
+        { externalId: { startsWith: "inbox-seed-" } },
+        { platform: "DEMO" },
+        { company: { name: { in: SEEDED_COMPANY_NAMES } } },
+      ],
+    },
+    select: { id: true },
+  });
+  const signalIds = seededSignals.map((signal) => signal.id);
+
+  if (signalIds.length > 0) {
+    await prisma.alert.deleteMany({
+      where: { signalId: { in: signalIds } },
+    });
+  }
+
+  const signals = await prisma.signal.deleteMany({
+    where: {
+      OR: [
+        { id: { in: signalIds } },
+        { externalId: { startsWith: "demo-post-" } },
+        { externalId: { startsWith: "inbox-seed-" } },
+        { platform: "DEMO" },
+      ],
+    },
+  });
+  const companies = await prisma.company.deleteMany({
+    where: { name: { in: SEEDED_COMPANY_NAMES } },
+  });
+  await prisma.sourceSnapshot.deleteMany({ where: { source: "DEMO" } });
+
+  return {
+    reset: true,
+    purgedSeeded: true,
+    deletedSignals: signals.count,
+    deletedCompanies: companies.count,
+  };
+}
+
 function formatRelativeTime(value?: Date | null): string {
   if (!value) {
     return "Never";
@@ -116,7 +161,9 @@ export function createApp(options?: { startScheduler?: boolean }) {
     }
 
     if (!env.ENABLE_X_SOURCE) {
-      warnings.push("X is off (ENABLE_X_SOURCE=false). Use SOCIAL_INBOX or DEMO for free early signals.");
+      warnings.push(
+        "X API is off or unpaid. Free early signals come from public Launch HN + SOCIAL_INBOX (no fake demo rows).",
+      );
     }
 
     const ready = blockers.length === 0;
@@ -141,35 +188,15 @@ export function createApp(options?: { startScheduler?: boolean }) {
 
   app.post("/reset-demo", async (_request, response, next) => {
     try {
-      const demoSignals = await prisma.signal.findMany({
-        where: {
-          OR: [{ externalId: { startsWith: "demo-post-" } }, { company: { name: { in: ["We", "Acme AI"] } } }],
-        },
-        select: { id: true },
-      });
-      const signalIds = demoSignals.map((signal) => signal.id);
+      response.json(await purgeSeededData());
+    } catch (error) {
+      next(error);
+    }
+  });
 
-      if (signalIds.length > 0) {
-        await prisma.alert.deleteMany({
-          where: { signalId: { in: signalIds } },
-        });
-      }
-
-      const signals = await prisma.signal.deleteMany({
-        where: {
-          OR: [{ id: { in: signalIds } }, { externalId: { startsWith: "demo-post-" } }],
-        },
-      });
-      const companies = await prisma.company.deleteMany({
-        where: { name: { in: ["We", "Acme AI"] } },
-      });
-      await prisma.sourceSnapshot.deleteMany({ where: { source: "DEMO" } });
-
-      response.json({
-        reset: true,
-        deletedSignals: signals.count,
-        deletedCompanies: companies.count,
-      });
+  app.post("/purge-seeded", async (_request, response, next) => {
+    try {
+      response.json(await purgeSeededData());
     } catch (error) {
       next(error);
     }
@@ -218,7 +245,7 @@ export function createApp(options?: { startScheduler?: boolean }) {
       repository.getDashboardCounts(),
       repository.getOfficialCompanyCounts(),
       repository.listSourceHealth(),
-      repository.listRecentSignals(6),
+      repository.listRecentFounderSignals(6),
       repository.listRecentOfficialCompanies(8),
     ]);
 
@@ -255,7 +282,7 @@ export function createApp(options?: { startScheduler?: boolean }) {
         EARLY_SIGNAL_CONFIDENCE_THRESHOLD: String(env.EARLY_SIGNAL_CONFIDENCE_THRESHOLD),
         ENABLED_SOURCES: defaultSources.join(", "),
         DEMO_MODE: String(env.ENABLE_DEMO_MODE),
-        SOCIAL_INBOX: "POST /social-inbox or edit data/social-inbox.json — free early signals, no X credits",
+        SOCIAL_INBOX: "Live Launch HN (YC) posts + optional POST /social-inbox — free, no X credits",
         SLACK_MODE: env.SLACK_WEBHOOK_URL ? "webhook" : env.SLACK_BOT_TOKEN ? "bot" : "disabled",
         ENABLE_X_SOURCE: String(env.ENABLE_X_SOURCE),
         X_STATUS: xHealth?.status ?? "disabled",
@@ -263,7 +290,7 @@ export function createApp(options?: { startScheduler?: boolean }) {
         LINKEDIN_ENABLED: String(env.LINKEDIN_ENABLED),
         LLM_PROVIDER: env.LLM_PROVIDER,
         PRODUCTION_NOTE:
-          "Early signals: use SOCIAL_INBOX (free) or DEMO. Optional paid X: set ENABLE_X_SOURCE=true + X_BEARER_TOKEN with credits. Slack: invite bot or set webhook.",
+          "Early signals: public Launch HN + SOCIAL_INBOX by default. DEMO is off. Optional paid X needs credits. Slack: invite bot or set webhook.",
       }),
     );
   });

@@ -28,7 +28,7 @@ const envSchema = z
     POLL_INTERVAL_HOURS: z.coerce.number().positive().default(8),
     EARLY_SIGNAL_CONFIDENCE_THRESHOLD: z.coerce.number().min(0).max(1).default(0.85),
     RUN_ON_BOOT: booleanFromEnv.default(false),
-    ENABLE_DEMO_MODE: booleanFromEnv.default(true),
+    ENABLE_DEMO_MODE: booleanFromEnv.default(false),
     YC_DIRECTORY_URL: z.string().url(),
     YC_DIRECTORY_BATCHES: z.string().default("S26"),
     YC_SPEEDRUN_URL: z.string().url(),

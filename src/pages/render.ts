@@ -579,7 +579,7 @@ export function renderDashboard(params: {
         </div>
         <div class="conf">${Math.round(latestSignal.confidence * 100)}%<small>confidence</small></div>
       </div>`
-    : `<div class="empty">No founder-announced early signals yet. Use <code>/social-inbox</code> or enable X later.</div>`;
+    : `<div class="empty">No founder-announced signals yet. Run a scan to pull live Launch HN posts.</div>`;
 
   const rows = recentCompanies
     .map(
@@ -738,7 +738,7 @@ export function renderSignalsPage(
       <section class="block">
         <div class="block-head">
           <h2>Founder signals</h2>
-          <p>Early announcements from social / inbox / demo — not official directory rows</p>
+          <p>Real founder announcements from public Launch HN and social inbox — not seeded demos</p>
         </div>
         <div class="surface">
           <table>
@@ -752,7 +752,7 @@ export function renderSignalsPage(
                 <th></th>
               </tr>
             </thead>
-            <tbody>${founderSignalRows || `<tr><td colspan="6">No early founder signals yet. Use DEMO or POST /social-inbox, then run a scan.</td></tr>`}</tbody>
+            <tbody>${founderSignalRows || `<tr><td colspan="6">No founder signals yet. Run a scan — SOCIAL_INBOX pulls live Launch HN (YC) posts automatically.</td></tr>`}</tbody>
           </table>
         </div>
       </section>

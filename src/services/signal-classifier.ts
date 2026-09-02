@@ -29,6 +29,11 @@ function cleanCompanyName(value?: string | null): string | null {
 }
 
 function extractHeuristicCompanyName(post: SocialPost): string | null {
+  const launchHn = post.text.match(/Launch HN:\s*([^(]+?)\s*\(\s*YC\s+([SWP]?\d{2})\s*\)/i);
+  if (launchHn?.[1]) {
+    return cleanCompanyName(launchHn[1]);
+  }
+
   const patterns = [
     /\b([A-Z][A-Za-z0-9&-]*(?:\s+[A-Z][A-Za-z0-9&-]*){0,3})\s+(?:is|are)\s+(?:joining|accepted|backed|launching)\b/,
     /\b(?:at|for|building)\s+([A-Z][A-Za-z0-9&-]*(?:\s+[A-Z][A-Za-z0-9&-]*){0,3})\b/,
@@ -50,19 +55,28 @@ function extractHeuristicCompanyName(post: SocialPost): string | null {
 export class HeuristicSignalClassifier implements SignalClassifier {
   async classify(post: SocialPost): Promise<ClassifiedSignal> {
     const text = post.text.toLowerCase();
+    const launchHn = post.text.match(/Launch HN:\s*([^(]+?)\s*\(\s*YC\s+([SWP]?\d{2})\s*\)/i);
     const ycMatch = text.match(/\b(yc|y combinator|speedrun)\b/);
-    const batchMatch = post.text.match(/\b([SW]\d{2})\b/i);
-    const acceptanceLanguage = /(got into|joining|accepted into|we got into|backed by y combinator|we're joining)/i.test(post.text);
-    const founderLanguage = /\b(we|our company|i built|my cofounder|our startup)\b/i.test(post.text);
+    const batchFromLaunch = launchHn?.[2]?.toUpperCase() ?? null;
+    const batchMatch = batchFromLaunch ? null : post.text.match(/\b([SWP]\d{2})\b/i);
+    const batch = batchFromLaunch ?? batchMatch?.[1]?.toUpperCase() ?? null;
+    const acceptanceLanguage =
+      Boolean(launchHn) ||
+      /(got into|joining|accepted into|we got into|backed by y combinator|we're joining|launch hn)/i.test(post.text);
+    const founderLanguage =
+      Boolean(launchHn) || /\b(we|our company|i built|my cofounder|our startup|i'm|i am|founders of)\b/i.test(post.text);
     const companyName = extractHeuristicCompanyName(post);
 
     const evidence: string[] = [];
 
+    if (launchHn) {
+      evidence.push("Public Launch HN founder post detected");
+    }
     if (ycMatch) {
       evidence.push(`Program language detected: ${ycMatch[0]}`);
     }
-    if (batchMatch) {
-      evidence.push(`Batch detected: ${batchMatch[1].toUpperCase()}`);
+    if (batch) {
+      evidence.push(`Batch detected: ${batch}`);
     }
     if (acceptanceLanguage) {
       evidence.push("Acceptance-style announcement phrasing detected");
@@ -71,19 +85,21 @@ export class HeuristicSignalClassifier implements SignalClassifier {
       evidence.push("First-person founder-style language detected");
     }
 
-    const confidence = [ycMatch, batchMatch, acceptanceLanguage, founderLanguage].filter(Boolean).length / 4;
-    const isFounderAnnouncement = Boolean(ycMatch && acceptanceLanguage && founderLanguage);
+    const confidence = launchHn
+      ? 0.95
+      : [ycMatch, batch, acceptanceLanguage, founderLanguage].filter(Boolean).length / 4;
+    const isFounderAnnouncement = Boolean(launchHn || (ycMatch && acceptanceLanguage && founderLanguage));
     const program = /speedrun/i.test(post.text) ? "SPEEDRUN" : "YC";
 
     return {
       isFounderAnnouncement,
       companyName,
       founderName: post.authorName,
-      batch: batchMatch?.[1]?.toUpperCase() ?? null,
+      batch,
       program,
       confidence,
       evidence,
-      reasoning: "Heuristic fallback classifier",
+      reasoning: launchHn ? "Launch HN public founder announcement" : "Heuristic fallback classifier",
     };
   }
 }

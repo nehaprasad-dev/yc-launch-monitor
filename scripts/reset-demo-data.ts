@@ -1,14 +1,21 @@
 import { prisma } from "../src/db.js";
 
+const SEEDED_COMPANY_NAMES = ["We", "Acme AI", "Orbit Ledger"];
+
 async function main() {
-  const demoSignals = await prisma.signal.findMany({
+  const seededSignals = await prisma.signal.findMany({
     where: {
-      OR: [{ externalId: { startsWith: "demo-post-" } }, { company: { name: { in: ["We", "Acme AI"] } } }],
+      OR: [
+        { externalId: { startsWith: "demo-post-" } },
+        { externalId: { startsWith: "inbox-seed-" } },
+        { platform: "DEMO" },
+        { company: { name: { in: SEEDED_COMPANY_NAMES } } },
+      ],
     },
     select: { id: true },
   });
 
-  const signalIds = demoSignals.map((signal) => signal.id);
+  const signalIds = seededSignals.map((signal) => signal.id);
 
   const deletedAlerts =
     signalIds.length > 0
@@ -19,12 +26,17 @@ async function main() {
 
   const deletedSignals = await prisma.signal.deleteMany({
     where: {
-      OR: [{ id: { in: signalIds } }, { externalId: { startsWith: "demo-post-" } }],
+      OR: [
+        { id: { in: signalIds } },
+        { externalId: { startsWith: "demo-post-" } },
+        { externalId: { startsWith: "inbox-seed-" } },
+        { platform: "DEMO" },
+      ],
     },
   });
 
   const deletedCompanies = await prisma.company.deleteMany({
-    where: { name: { in: ["We", "Acme AI"] } },
+    where: { name: { in: SEEDED_COMPANY_NAMES } },
   });
 
   await prisma.sourceSnapshot.deleteMany({
@@ -37,7 +49,7 @@ async function main() {
         deletedAlerts: deletedAlerts.count,
         deletedSignals: deletedSignals.count,
         deletedCompanies: deletedCompanies.count,
-        resetDemoCursor: true,
+        purgedSeeded: true,
       },
       null,
       2,

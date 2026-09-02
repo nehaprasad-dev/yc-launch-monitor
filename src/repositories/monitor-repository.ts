@@ -315,11 +315,23 @@ export class MonitorRepository {
   }
 
   async listRecentFounderSignals(limit = 20) {
+    const seededNames = ["Acme AI", "Orbit Ledger", "We"];
     return prisma.signal.findMany({
       where: {
-        OR: [
-          { signalType: "EARLY_YC" },
-          { platform: { in: ["X", "LINKEDIN", "SOCIAL_INBOX", "DEMO"] } },
+        AND: [
+          {
+            OR: [
+              { signalType: "EARLY_YC" },
+              { platform: { in: ["X", "LINKEDIN", "SOCIAL_INBOX"] } },
+              { externalId: { startsWith: "hn-" } },
+            ],
+          },
+          { platform: { not: "DEMO" } },
+          { externalId: { not: { startsWith: "demo-post-" } } },
+          { externalId: { not: { startsWith: "inbox-seed-" } } },
+          {
+            OR: [{ companyId: null }, { company: { name: { notIn: seededNames } } }],
+          },
         ],
       },
       include: {
