@@ -51,11 +51,12 @@ function requirePondAuth(request: express.Request, response: express.Response): 
   return true;
 }
 
-export function createApp() {
+export function createApp(options?: { startScheduler?: boolean }) {
   const app = express();
   const repository = new MonitorRepository();
   const engine = new MonitorEngine();
   const scheduler = new MonitorScheduler(engine);
+  const startScheduler = options?.startScheduler ?? true;
 
   app.use(express.json());
 
@@ -357,15 +358,17 @@ export function createApp() {
     response.status(500).json({ error: message });
   });
 
-  scheduler.start(defaultSources);
+  if (startScheduler) {
+    scheduler.start(defaultSources);
 
-  const shutdown = async () => {
-    scheduler.stop();
-    await prisma.$disconnect();
-  };
+    const shutdown = async () => {
+      scheduler.stop();
+      await prisma.$disconnect();
+    };
 
-  process.on("SIGINT", () => void shutdown().finally(() => process.exit(0)));
-  process.on("SIGTERM", () => void shutdown().finally(() => process.exit(0)));
+    process.on("SIGINT", () => void shutdown().finally(() => process.exit(0)));
+    process.on("SIGTERM", () => void shutdown().finally(() => process.exit(0)));
+  }
 
   return app;
 }
