@@ -238,7 +238,7 @@ export function createApp(options?: { startScheduler?: boolean }) {
 
   app.get("/signals", async (_request, response) => {
     const [signals, companies] = await Promise.all([
-      repository.listRecentSignals(50),
+      repository.listRecentFounderSignals(50),
       repository.listRecentOfficialCompanies(50),
     ]);
     response.type("html").send(renderSignalsPage(signals, companies));

@@ -58,18 +58,41 @@ export class MonitorEngine {
         }
 
         if (result.companies?.length) {
+          let founderLookups = 0;
+          const maxFounderLookups = 25;
+
           for (const company of result.companies) {
             const existing = await this.repository.findCompanyByInput(company);
             const needsOfficialAlert =
               sourceName === "YC_SPEEDRUN"
                 ? !(await this.repository.hasAlertForCompany(company, "NEW_SPEEDRUN_COMPANY"))
                 : !(await this.repository.hasAlertForCompany(company, "NEW_YC_COMPANY"));
+            const missingFounder = !existing?.founders?.length;
             const shouldEnrichFounder =
               (sourceName === "YC_DIRECTORY" || sourceName === "YC_SPEEDRUN") &&
-              (!existing || !existing.officialConfirmedAt || needsOfficialAlert);
-            const founderName = shouldEnrichFounder ? await fetchPrimaryFounderName(company.ycUrl) : null;
-            const enrichedCompany = founderName ? { ...company, founderName } : company;
+              founderLookups < maxFounderLookups &&
+              (!existing || missingFounder || needsOfficialAlert);
+
+            let enrichedCompany = company;
+            if (shouldEnrichFounder) {
+              founderLookups += 1;
+              const founderName = await fetchPrimaryFounderName(company.ycUrl);
+              if (founderName) {
+                enrichedCompany = { ...company, founderName };
+              }
+            }
+
             const persisted = await this.repository.upsertCompany(enrichedCompany, true);
+
+            if (enrichedCompany.founderName) {
+              await this.repository.upsertFounder(
+                {
+                  name: enrichedCompany.founderName,
+                  platform: sourceName,
+                },
+                persisted.id,
+              );
+            }
 
             if (!existing) {
               alerts.push(

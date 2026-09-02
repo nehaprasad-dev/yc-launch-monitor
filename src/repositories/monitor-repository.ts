@@ -78,9 +78,10 @@ export class MonitorRepository {
     });
   }
 
-  async findCompanyByInput(company: CompanyRecordInput): Promise<Company | null> {
+  async findCompanyByInput(company: CompanyRecordInput): Promise<(Company & { founders: Founder[] }) | null> {
     const existing = await prisma.company.findFirst({
       where: companyIdentifierWhere(company),
+      include: { founders: { orderBy: { createdAt: "asc" }, take: 1 } },
       orderBy: { createdAt: "asc" },
     });
 
@@ -291,6 +292,12 @@ export class MonitorRepository {
           not: null,
         },
       },
+      include: {
+        founders: {
+          orderBy: { createdAt: "asc" },
+          take: 1,
+        },
+      },
       orderBy: [{ officialConfirmedAt: "desc" }, { createdAt: "desc" }],
       take: limit,
     });
@@ -298,6 +305,23 @@ export class MonitorRepository {
 
   async listRecentSignals(limit = 20) {
     return prisma.signal.findMany({
+      include: {
+        company: true,
+        founder: true,
+      },
+      orderBy: { detectedAt: "desc" },
+      take: limit,
+    });
+  }
+
+  async listRecentFounderSignals(limit = 20) {
+    return prisma.signal.findMany({
+      where: {
+        OR: [
+          { signalType: "EARLY_YC" },
+          { platform: { in: ["X", "LINKEDIN", "SOCIAL_INBOX", "DEMO"] } },
+        ],
+      },
       include: {
         company: true,
         founder: true,

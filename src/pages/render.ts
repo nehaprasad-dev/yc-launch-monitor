@@ -685,13 +685,13 @@ export function renderSignalsPage(
       founder: { name: string } | null;
     }
   >,
-  companies: Company[],
+  companies: Array<
+    Company & {
+      founders?: Array<{ name: string }>;
+    }
+  >,
 ): string {
-  const founderSignals = signals.filter((signal) =>
-    ["X", "LINKEDIN", "SOCIAL_INBOX", "DEMO"].includes(signal.platform),
-  );
-
-  const founderSignalRows = founderSignals
+  const founderSignalRows = signals
     .map(
       (signal) => `
         <tr>
@@ -706,17 +706,18 @@ export function renderSignalsPage(
     .join("");
 
   const companyRows = companies
-    .map(
-      (company) => `
+    .map((company) => {
+      const founderName = company.founders?.[0]?.name ?? null;
+      return `
         <div class="row">
           <div class="type">${escapeHtml(company.program === "SPEEDRUN" ? "Speedrun" : "YC")}</div>
           <div>
             <h4>${escapeHtml(company.name)}</h4>
-            <div class="sub">${escapeHtml(company.batch ?? "Batch TBD")} · ${escapeHtml(company.description ?? company.domain ?? "Public company listing")}</div>
+            <div class="sub">${escapeHtml(company.batch ?? "Batch TBD")} · ${escapeHtml(founderName ?? "Founder pending")} · ${escapeHtml(company.description ?? company.domain ?? "Public company listing")}</div>
           </div>
           <div class="side">${company.ycUrl ? `<a href="${escapeHtml(company.ycUrl)}">open</a>` : ""}</div>
-        </div>`,
-    )
+        </div>`;
+    })
     .join("");
 
   return pageShell(
@@ -724,12 +725,12 @@ export function renderSignalsPage(
     "signals",
     `
       <h1 class="page-title">Signals</h1>
-      <p class="page-lead">Official public-company listings and founder-driven early signals are separated below so demo data does not blend into the real directory feed.</p>
+      <p class="page-lead">Official YC listings and founder-announced early signals are kept separate so each feed stays clear.</p>
 
       <section class="block">
         <div class="block-head">
           <h2>Official companies</h2>
-          <p>Real YC / Speedrun listings from free public sources</p>
+          <p>Real YC / Speedrun listings with founder names when available on the YC page</p>
         </div>
         <div class="list">${companyRows || `<div class="empty">No official companies loaded yet.</div>`}</div>
       </section>
@@ -737,7 +738,7 @@ export function renderSignalsPage(
       <section class="block">
         <div class="block-head">
           <h2>Founder signals</h2>
-          <p>Inbox, demo, or social-source detections</p>
+          <p>Early announcements from social / inbox / demo — not official directory rows</p>
         </div>
         <div class="surface">
           <table>
@@ -751,7 +752,7 @@ export function renderSignalsPage(
                 <th></th>
               </tr>
             </thead>
-            <tbody>${founderSignalRows || `<tr><td colspan="6">No founder signals yet.</td></tr>`}</tbody>
+            <tbody>${founderSignalRows || `<tr><td colspan="6">No early founder signals yet. Use DEMO or POST /social-inbox, then run a scan.</td></tr>`}</tbody>
           </table>
         </div>
       </section>
