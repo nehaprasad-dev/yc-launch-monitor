@@ -53,7 +53,7 @@ function pageShell(title: string, active: "home" | "signals" | "settings", body:
       }
 
       * { box-sizing: border-box; }
-      html, body { margin: 0; min-height: 100%; }
+      html, body { margin: 0; min-height: 100%; overflow-x: hidden; }
       body {
         font-family: var(--font);
         color: var(--ink);
@@ -85,9 +85,10 @@ function pageShell(title: string, active: "home" | "signals" | "settings", body:
       .wrap {
         position: relative;
         z-index: 1;
-        width: min(1080px, calc(100% - 32px));
+        width: min(1080px, 100%);
         margin: 0 auto;
-        padding: 26px 0 64px;
+        padding: 26px 16px 64px;
+        overflow-x: hidden;
       }
 
       header.site {
@@ -263,6 +264,7 @@ function pageShell(title: string, active: "home" | "signals" | "settings", body:
       }
       .block-head p {
         margin: 0;
+        max-width: 42ch;
         color: var(--faint);
         font-size: 13px;
       }
@@ -407,6 +409,12 @@ function pageShell(title: string, active: "home" | "signals" | "settings", body:
         border-radius: 6px;
         padding: 8px 14px;
         backdrop-filter: blur(10px);
+        max-width: 100%;
+      }
+      .table-scroll {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding: 8px 14px;
       }
 
       table { width: 100%; border-collapse: collapse; }
@@ -415,6 +423,11 @@ function pageShell(title: string, active: "home" | "signals" | "settings", body:
         padding: 14px 8px;
         border-bottom: 1px solid var(--line);
         font-size: 14px;
+        vertical-align: top;
+      }
+      td {
+        overflow-wrap: anywhere;
+        word-break: break-word;
       }
       th {
         font-size: 11px;
@@ -484,6 +497,62 @@ function pageShell(title: string, active: "home" | "signals" | "settings", body:
         .row { grid-template-columns: 1fr; gap: 6px; }
         .row .side { text-align: left; }
         header.site { flex-wrap: wrap; }
+        .block-head { flex-direction: column; align-items: flex-start; }
+        .block-head p { max-width: none; }
+      }
+
+      @media (max-width: 720px) {
+        .table-scroll {
+          overflow: visible;
+          background: transparent;
+          border: 0;
+          padding: 0;
+          backdrop-filter: none;
+        }
+        .table-scroll table,
+        .table-scroll thead,
+        .table-scroll tbody,
+        .table-scroll th,
+        .table-scroll td,
+        .table-scroll tr {
+          display: block;
+          width: 100%;
+        }
+        .table-scroll thead { display: none; }
+        .table-scroll tr {
+          background: var(--surface);
+          border: 1px solid var(--line);
+          border-radius: 8px;
+          padding: 12px 14px 10px;
+          margin-bottom: 10px;
+        }
+        .table-scroll td {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 8px 0;
+          border-bottom: 1px solid var(--line);
+          font-size: 14px;
+        }
+        .table-scroll td:last-child { border-bottom: 0; }
+        .table-scroll td::before {
+          content: attr(data-label);
+          flex: 0 0 38%;
+          color: var(--faint);
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+        .table-scroll td[data-label=""] {
+          justify-content: flex-end;
+        }
+        .table-scroll td[data-label=""]::before { display: none; }
+        .table-scroll td.empty-row {
+          display: block;
+          color: var(--muted);
+        }
+        .table-scroll td.empty-row::before { display: none; }
       }
     </style>
   </head>
@@ -695,12 +764,12 @@ export function renderSignalsPage(
     .map(
       (signal) => `
         <tr>
-          <td>${escapeHtml(signal.detectedAt.toISOString().replace("T", " ").slice(0, 19))}</td>
-          <td>${escapeHtml(signal.signalType)}</td>
-          <td>${escapeHtml(signal.company?.name ?? "Unknown")}</td>
-          <td>${escapeHtml(signal.founder?.name ?? "Unknown")}</td>
-          <td>${Math.round(signal.confidence * 100)}%</td>
-          <td><a href="${escapeHtml(signal.url)}">Open</a></td>
+          <td data-label="Detected">${escapeHtml(signal.detectedAt.toISOString().replace("T", " ").slice(0, 19))}</td>
+          <td data-label="Type">${escapeHtml(signal.signalType)}</td>
+          <td data-label="Company">${escapeHtml(signal.company?.name ?? "Unknown")}</td>
+          <td data-label="Founder">${escapeHtml(signal.founder?.name ?? "Unknown")}</td>
+          <td data-label="Confidence">${Math.round(signal.confidence * 100)}%</td>
+          <td data-label=""><a href="${escapeHtml(signal.url)}">Open</a></td>
         </tr>`,
     )
     .join("");
@@ -740,7 +809,7 @@ export function renderSignalsPage(
           <h2>Founder signals</h2>
           <p>Real founder announcements from public Launch HN and social inbox — not seeded demos</p>
         </div>
-        <div class="surface">
+        <div class="surface table-scroll">
           <table>
             <thead>
               <tr>
@@ -752,7 +821,7 @@ export function renderSignalsPage(
                 <th></th>
               </tr>
             </thead>
-            <tbody>${founderSignalRows || `<tr><td colspan="6">No founder signals yet. Run a scan — SOCIAL_INBOX pulls live Launch HN (YC) posts automatically.</td></tr>`}</tbody>
+            <tbody>${founderSignalRows || `<tr><td class="empty-row" colspan="6">No founder signals yet. Run a scan — SOCIAL_INBOX pulls live Launch HN (YC) posts automatically.</td></tr>`}</tbody>
           </table>
         </div>
       </section>
